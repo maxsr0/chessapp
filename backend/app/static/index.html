@@ -24,7 +24,8 @@
   .best { color: #080; } .good { color: #4a4; }
   .chart { background: #fff; border: 1px solid #ddd; padding: 8px; margin-bottom: 16px; height: 260px; }
   .board { display: inline-grid; grid-template-columns: repeat(8, 32px); border: 2px solid #333; font-size: 26px; line-height: 32px; text-align: center; vertical-align: top; }
-  .board div { width: 32px; height: 32px; } .board .l { background: #f0d9b5; } .board .d { background: #b58863; }
+  .board div { width: 32px; height: 32px; cursor: pointer; } .board .l { background: #f0d9b5; } .board .d { background: #b58863; }
+  .board .sel { outline: 3px solid #2a7; outline-offset: -3px; }
   .row { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
   .hidden { display: none; }
 </style>
@@ -148,7 +149,9 @@ function showPuzzle() {
     <button onclick="checkPuzzle()">Check</button>
     <button onclick="revealPuzzle()">Reveal</button>
     <button onclick="pIdx=(pIdx+1)%puzzles.length;showPuzzle()">Next</button>
-    <p id="pResult"></p>`;
+    <p id="pResult"></p>
+    <p style="color:#777">Tip: click a piece, then its destination square.</p>`;
+  enableClicks(p.fen_before);
   $("pAns").focus();
 }
 
@@ -282,9 +285,40 @@ function board(fen, flip = fen.split(" ")[1] === "b") {
   fen.split(" ")[0].split("/").forEach((rank) => {
     for (const ch of rank) /\d/.test(ch) ? squares.push(...Array(+ch).fill("")) : squares.push(GLYPH[ch]);
   });
-  let cells = squares.map((p, i) => ({ p, dark: (Math.floor(i / 8) + i % 8) % 2 === 1 }));
+  let cells = squares.map((p, i) => ({
+    p, dark: (Math.floor(i / 8) + i % 8) % 2 === 1,
+    sq: "abcdefgh"[i % 8] + (8 - Math.floor(i / 8)),
+  }));
   if (flip) cells = cells.reverse();
-  return `<div class="board">${cells.map((c) => `<div class="${c.dark ? "d" : "l"}">${c.p}</div>`).join("")}</div>`;
+  return `<div class="board">${cells.map((c) => `<div class="${c.dark ? "d" : "l"}" data-sq="${c.sq}">${c.p}</div>`).join("")}</div>`;
+}
+
+// Click-to-move on the puzzle board (chess.js validates and gives SAN)
+let selected = null;
+const chessReady = import("https://cdn.jsdelivr.net/npm/chess.js@1.0.0/+esm").then((m) => m.Chess);
+
+async function enableClicks(fen) {
+  let ChessLib;
+  try { ChessLib = await chessReady; } catch { return; }  // typing still works offline
+  const game = new ChessLib(fen);
+  selected = null;
+  $("pBoard").querySelectorAll("[data-sq]").forEach((el) => el.onclick = () => {
+    const sq = el.dataset.sq, piece = game.get(sq);
+    if (piece && piece.color === game.turn()) {
+      selected = sq;
+      $("pBoard").querySelectorAll("[data-sq]").forEach((x) => x.classList.toggle("sel", x.dataset.sq === sq));
+      return;
+    }
+    if (!selected) return;
+    try {
+      const mv = game.move({ from: selected, to: sq, promotion: "q" });
+      game.undo();
+      $("pAns").value = mv.san;
+      checkPuzzle();
+    } catch { /* illegal move: ignore */ }
+    selected = null;
+    $("pBoard").querySelectorAll(".sel").forEach((x) => x.classList.remove("sel"));
+  });
 }
 
 loadAll().catch((e) => status(e.message));
