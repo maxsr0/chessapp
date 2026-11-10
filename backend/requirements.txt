@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+sqlmodel
+httpx
+python-chess
+pandas
+python-dotenv
+pytest
