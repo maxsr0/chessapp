@@ -12,8 +12,8 @@ ChessIQ: enter a Chess.com username, import games via the public API, analyze ev
 - Stockfish: set `STOCKFISH_PATH` in `backend/.env` (see `.env.example`) or put `stockfish` on PATH.
 
 ## Architecture
-- `backend/app/`: FastAPI + SQLModel (SQLite for now) + python-chess. Planned modules: `chesscom.py` (API client), `models.py`, `analysis.py` (engine), `patterns.py`, `stats.py` (pandas aggregation), `jobs.py` (background analysis).
-- `frontend/`: Next.js, added in Milestone 5.
+- `backend/app/`: FastAPI + SQLModel (SQLite for now) + python-chess. Modules: `chesscom.py` (API client + opening names), `models.py`, `analysis.py` (Stockfish eval + move classification), `jobs.py` (background analysis, one job per user), `patterns.py` (tactic tags from the position + opponent best reply), `stats.py` (pandas aggregation, study plan; moves DataFrame cached per user, keyed by analyzed-game count). Phase and tags are computed at query time, not stored.
+- `backend/app/static/index.html`: a single-page dashboard (vanilla JS + Chart.js from a CDN) served at `/`. A Next.js frontend is optional future work.
 
 ## Conventions and gotchas
 - Chess.com API: send a descriptive `User-Agent`, make requests one at a time (parallel calls get rate-limited), and cache monthly archives.

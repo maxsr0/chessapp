@@ -2,19 +2,19 @@
 
 Patterns are derived from stored MoveAnalysis rows at query time:
 - phase: opening (first 10 moves each), endgame (little non-pawn material), else middlegame
-- tags on the player's mistakes/blunders:
-    allowed_capture  - opponent's best reply was a capture (you hung something)
-    allowed_mate     - opponent's best reply was mate
+- tags on the player's mistakes/blunders (see patterns.py):
+    hung_piece / allowed_fork / allowed_mate / back_rank_mate
     missed_mate      - you had a forced mate and didn't keep it
     time_trouble     - under 10% of base time (or 20s) left on the clock
 """
 
 import chess
 import pandas as pd
-from sqlmodel import Session, select
+from sqlmodel import Session, func, select
 
 from app.chesscom import opening_family
 from app.models import Game, MoveAnalysis
+from app.patterns import tactic_tags
 
 PIECE_VALUES = {chess.KNIGHT: 3, chess.BISHOP: 3, chess.ROOK: 5, chess.QUEEN: 9}
 ERRORS = ("mistake", "blunder")
@@ -29,7 +29,24 @@ def games_df(session: Session, username: str) -> pd.DataFrame:
     return df
 
 
+_cache: dict[str, tuple[int, pd.DataFrame]] = {}
+
+
 def moves_df(session: Session, username: str) -> pd.DataFrame:
+    """Cached by number of analyzed games, so it refreshes when analysis progresses."""
+    n_done = session.exec(
+        select(func.count()).select_from(Game)
+        .where(Game.username == username, Game.analysis_status == "done")
+    ).one()
+    hit = _cache.get(username)
+    if hit and hit[0] == n_done:
+        return hit[1].copy()
+    df = _build_moves_df(session, username)
+    _cache[username] = (n_done, df)
+    return df.copy()
+
+
+def _build_moves_df(session: Session, username: str) -> pd.DataFrame:
     """All moves for the player's analyzed games, with pattern columns added."""
     stmt = (
         select(MoveAnalysis, Game.time_control, Game.end_time, Game.opening, Game.color)
@@ -47,8 +64,9 @@ def moves_df(session: Session, username: str) -> pd.DataFrame:
     df["month"] = pd.to_datetime(df["end_time"], utc=True).dt.strftime("%Y-%m")
     df["phase"] = [phase(f, p) for f, p in zip(df["fen_before"], df["ply"])]
 
-    # opponent's best reply = the next ply's best_move in the same game
+    # opponent's best reply = the next ply's best_move, from the next ply's position
     df["reply_best"] = df.groupby("game_id")["best_move"].shift(-1)
+    df["reply_fen"] = df.groupby("game_id")["fen_before"].shift(-1)
     df["base_time"] = df["time_control"].map(base_seconds)
 
     df = df[df["is_player"]].copy()
@@ -83,11 +101,9 @@ def tags(r) -> list[str]:
     if r.classification not in ERRORS:
         return []
     out = []
-    reply = r.reply_best if isinstance(r.reply_best, str) else ""  # NaN when missing
-    if "#" in reply:
-        out.append("allowed_mate")
-    elif "x" in reply:
-        out.append("allowed_capture")
+    if isinstance(r.reply_best, str) and isinstance(r.reply_fen, str):  # NaN when missing
+        me = chess.WHITE if r.color == "white" else chess.BLACK
+        out += tactic_tags(r.reply_fen, r.reply_best, me)
     if r.eval_before >= 9000 and r.eval_after < 9000:
         out.append("missed_mate")
     if r.base_time and pd.notna(r.clock) and r.clock < max(20, 0.1 * r.base_time):
@@ -166,11 +182,13 @@ def openings(session: Session, username: str, min_games: int = 3, family: bool =
 
 
 TAG_ADVICE = {
-    "allowed_capture": (
-        "You hang material",
+    "hung_piece": (
+        "You hang pieces",
         "Before each move, check every piece the opponent can capture after it (blunder check).",
     ),
+    "allowed_fork": ("You walk into forks", "Watch for knight jumps and queen moves that hit two pieces at once."),
     "allowed_mate": ("You allow mating attacks", "Check for opponent checks and mate threats before moving."),
+    "back_rank_mate": ("Back-rank weakness", "Make luft (a pawn move for your king) once the position calms down."),
     "missed_mate": ("You miss forced mates", "Practice mate-in-2/3 puzzles; look for checks first when ahead."),
     "time_trouble": ("Your errors come when low on time", "Spend less time early; play faster in the opening you know."),
 }
