@@ -1,0 +1,178 @@
+@import "tailwindcss";
+
+/* Tokens mirror maxwellrobbins.com so /chessapp feels like part of the site.
+   Chart series colors were run through the dataviz palette validator against both surfaces. */
+:root {
+  color-scheme: light;
+  --paper: #f7f6f2;
+  --ink: #101014;
+  --muted: #63636b;
+  --hair: #dddad2;
+  --accent: #2b44e7;
+  --body: #2a2a30;
+  --hovermuted: #b9b9c2;
+  --panel: #efede7;
+
+  --series-1: #2b44e7;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
+
+  /* move-quality status colors: always shown with a symbol + label */
+  --q-best: #0ca30c;
+  --q-good: #63636b;
+  --q-inaccuracy: #c98a00;
+  --q-mistake: #ec835a;
+  --q-blunder: #d03b3b;
+
+  --sq-light: #e8e5dc;
+  --sq-dark: #9aa3c9;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --paper: #121216;
+    --ink: #f2f1ec;
+    --muted: #9b9ba4;
+    --hair: #2d2d34;
+    --accent: #8296ff;
+    --body: #c8c8cf;
+    --hovermuted: #585860;
+    --panel: #1a1a20;
+    --series-1: #7086f5;
+    --series-2: #d95926;
+    --series-3: #199e70;
+    --series-4: #c98500;
+    --q-good: #9b9ba4;
+    --q-inaccuracy: #fab219;
+    --sq-light: #d9d7e3;
+    --sq-dark: #7d87b8;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --paper: #121216;
+  --ink: #f2f1ec;
+  --muted: #9b9ba4;
+  --hair: #2d2d34;
+  --accent: #8296ff;
+  --body: #c8c8cf;
+  --hovermuted: #585860;
+  --panel: #1a1a20;
+  --series-1: #7086f5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
+  --q-good: #9b9ba4;
+  --q-inaccuracy: #fab219;
+  --sq-light: #d9d7e3;
+  --sq-dark: #7d87b8;
+}
+
+@theme inline {
+  --color-paper: var(--paper);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-hair: var(--hair);
+  --color-accent: var(--accent);
+  --color-body: var(--body);
+  --color-panel: var(--panel);
+  --color-hovermuted: var(--hovermuted);
+  --font-sans: var(--font-inter), system-ui, sans-serif;
+  --font-display: var(--font-archivo), sans-serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, monospace;
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+::selection {
+  background: var(--accent);
+  color: #fff;
+}
+
+@layer components {
+  /* small uppercase label, as on the portfolio */
+  .label {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .display {
+    font-family: var(--font-display);
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: -0.015em;
+  }
+  .outline-text {
+    color: transparent;
+    -webkit-text-stroke: 2.5px var(--ink);
+  }
+  .wrap {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 0 16px;
+  }
+  @media (min-width: 640px) {
+    .wrap {
+      padding: 0 28px;
+    }
+  }
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    border: 1.5px solid var(--ink);
+    border-radius: 999px;
+    padding: 8px 18px;
+    font-weight: 600;
+    font-size: 14.5px;
+    transition: background 0.16s, color 0.16s;
+    cursor: pointer;
+  }
+  .btn:hover {
+    background: var(--ink);
+    color: var(--paper);
+  }
+  .btn-primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+  .btn-primary:hover {
+    background: var(--ink);
+    border-color: var(--ink);
+  }
+  .btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  .row-hover {
+    transition: background 0.16s, color 0.16s;
+  }
+  .row-hover:hover {
+    background: var(--ink);
+    color: var(--paper);
+  }
+  .row-hover:hover .label,
+  .row-hover:hover .text-muted {
+    color: var(--hovermuted);
+  }
+}
+
+/* theme toggle icon: sun in light, moon in dark (CSS-only, so SSR markup is stable) */
+.theme-moon { display: none; }
+:root[data-theme="dark"] .theme-sun { display: none; }
+:root[data-theme="dark"] .theme-moon { display: block; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .theme-sun { display: none; }
+  :root:not([data-theme="light"]) .theme-moon { display: block; }
+}
+

@@ -23,7 +23,13 @@ Deployment target: the backend runs as a Docker image on Render's free tier (`re
   - `patterns.py`: tactic tags, from the position plus the opponent's best reply.
   - `stats.py`: pandas aggregation and the study plan. The moves DataFrame is cached per user, keyed by analyzed-game count. Phase and tags are computed at query time, not stored.
 - `POST /players/{u}/sync` = import + enqueue. Import is capped by `MAX_IMPORT` (default 100). It's rate-limited per IP with `slowapi`, and CORS comes from `ALLOWED_ORIGINS`.
-- `backend/app/static/index.html`: the legacy vanilla-JS dashboard at `/`, kept until the Next.js `frontend/` replaces it.
+- `backend/app/static/index.html`: the legacy vanilla-JS dashboard at `/`. It's superseded by `frontend/`.
+- `frontend/`: Next.js 16 (App Router) static export with `basePath: /chessapp`. **Read `frontend/AGENTS.md` and `node_modules/next/dist/docs/` before changing Next APIs.** `cacheComponents` and PPR are off because they break `output: "export"`.
+  - Pages: `/` (search), `/player?u=&tab=`, `/game?id=&ply=&u=`. Query-param routes read `useSearchParams` inside a `<Suspense>` boundary. localStorage readers use `use(browser())`.
+  - Data: `src/lib/api.ts` (typed client, TanStack Query; `NEXT_PUBLIC_API_URL`). `SyncBar` polls the queue status and refreshes stats as games finish.
+  - Design: tokens in `src/app/globals.css` mirror maxwellrobbins.com (Archivo, Inter, JetBrains Mono, paper/ink/accent; light and dark via `data-theme` + the media query). Chart series colors were validated with the dataviz palette script. Keep one y-axis per chart, and keep text in ink colors (color dots carry the meaning).
+  - Commands (in `frontend/`): `NEXT_PUBLIC_API_URL=http://127.0.0.1:8000 npm run dev` → http://localhost:3000/chessapp. Also `npm run build` (writes `out/`), `npx tsc --noEmit`, and `npx eslint src`.
+  - Deploy: `.github/workflows/pages.yml` publishes `frontend/out` to GitHub Pages.
 
 ## Conventions and gotchas
 - Config comes from env vars, which `.env` loads locally: `DATABASE_URL` (SQLite by default; `postgres://` URLs are rewritten to `postgresql+psycopg://`), `STOCKFISH_PATH`, `ANALYSIS_DEPTH` (12 locally, 10 in Docker), `MAX_IMPORT`, `ALLOWED_ORIGINS`, and `RUN_WORKER` (set to `0` to skip the worker; the tests do this).
