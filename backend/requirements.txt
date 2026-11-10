@@ -6,3 +6,6 @@ python-chess
 pandas
 python-dotenv
 pytest
+psycopg[binary]
+alembic
+slowapi

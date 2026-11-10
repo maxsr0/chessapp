@@ -1,0 +1,16 @@
+# Render Blueprint: https://render.com/docs/blueprint-spec
+services:
+  - type: web
+    name: chessiq-api
+    runtime: docker
+    plan: free
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        sync: false # paste the Neon connection string in the Render dashboard
+      - key: ALLOWED_ORIGINS
+        value: https://maxwellrobbins.com,https://www.maxwellrobbins.com,http://localhost:3000
+      - key: MAX_IMPORT
+        value: "100"

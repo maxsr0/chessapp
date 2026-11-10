@@ -25,7 +25,8 @@ class Game(SQLModel, table=True):
     eco_url: str | None = None
     opening: str | None = None
     pgn: str
-    analysis_status: str = "pending"  # pending | done | error
+    analysis_status: str = Field(default="pending", index=True)  # pending | queued | done | error
+    queued_at: datetime | None = None  # when it entered the analysis queue (FIFO order)
     accuracy: float | None = None  # player's average move accuracy
 
 

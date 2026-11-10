@@ -1,26 +1,44 @@
+import os
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
-
 from pathlib import Path
 
-from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 from sqlmodel import Session, func, select
 
 from app import chesscom, jobs, stats
+from app.db import get_session, run_migrations
+from app.models import Game, MoveAnalysis, Player
 
 STATIC_DIR = Path(__file__).parent / "static"
-from app.db import get_session, init_db
-from app.models import Game, MoveAnalysis, Player
+MAX_IMPORT = int(os.getenv("MAX_IMPORT", "100"))
+ALLOWED_ORIGINS = os.getenv(
+    "ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000,https://maxwellrobbins.com"
+).split(",")
+RUN_WORKER = os.getenv("RUN_WORKER", "1") == "1"
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    init_db()
+    run_migrations()
+    if RUN_WORKER:
+        jobs.start_worker()
     yield
+    jobs.stop_worker()
 
 
+limiter = Limiter(key_func=get_remote_address)
 app = FastAPI(title="ChessIQ", lifespan=lifespan)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(
+    CORSMiddleware, allow_origins=ALLOWED_ORIGINS, allow_methods=["GET", "POST"], allow_headers=["*"]
+)
 
 
 @app.get("/health")
@@ -28,13 +46,7 @@ def health() -> dict:
     return {"status": "ok"}
 
 
-@app.post("/players/{username}/import")
-def import_games(
-    username: str,
-    limit: int = Query(200, ge=1, le=1000),
-    session: Session = Depends(get_session),
-) -> dict:
-    username = username.lower()
+def _import(session: Session, username: str, limit: int) -> dict:
     try:
         with chesscom.make_client() as client:
             raw_games = chesscom.fetch_recent_games(client, username, limit)
@@ -56,6 +68,43 @@ def import_games(
     return {"fetched": len(raw_games), "added": added}
 
 
+@app.post("/players/{username}/import")
+@limiter.limit("10/minute")
+def import_games(
+    request: Request,
+    username: str,
+    limit: int = Query(50, ge=1),
+    session: Session = Depends(get_session),
+) -> dict:
+    return _import(session, username.lower(), min(limit, MAX_IMPORT))
+
+
+@app.post("/players/{username}/analyze")
+@limiter.limit("10/minute")
+def start_analysis(request: Request, username: str, session: Session = Depends(get_session)) -> dict:
+    return {"queued": jobs.enqueue(session, username.lower())}
+
+
+@app.post("/players/{username}/sync")
+@limiter.limit("5/minute")
+def sync(
+    request: Request,
+    username: str,
+    limit: int = Query(50, ge=1),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Import recent games and queue everything unanalyzed, in one call."""
+    username = username.lower()
+    result = _import(session, username, min(limit, MAX_IMPORT))
+    result["queued"] = jobs.enqueue(session, username)
+    return result
+
+
+@app.get("/players/{username}/analysis-status")
+def analysis_status(username: str, session: Session = Depends(get_session)) -> dict:
+    return jobs.queue_status(session, username.lower())
+
+
 @app.get("/players/{username}/games")
 def list_games(
     username: str,
@@ -70,26 +119,6 @@ def list_games(
         select(Game).where(Game.username == username).order_by(Game.end_time.desc()).limit(limit)
     ).all()
     return {"total": total, "games": [g.model_dump(exclude={"pgn"}) for g in games]}
-
-
-@app.post("/players/{username}/analyze")
-def start_analysis(username: str, background: BackgroundTasks) -> dict:
-    username = username.lower()
-    if not jobs.try_start(username):
-        return {"started": False, "reason": "already running"}
-    background.add_task(jobs.analyze_player, username)
-    return {"started": True}
-
-
-@app.get("/players/{username}/analysis-status")
-def analysis_status(username: str, session: Session = Depends(get_session)) -> dict:
-    username = username.lower()
-    rows = session.exec(
-        select(Game.analysis_status, func.count())
-        .where(Game.username == username)
-        .group_by(Game.analysis_status)
-    ).all()
-    return {"running": jobs.is_running(username), "counts": dict(rows)}
 
 
 @app.get("/games/{game_id}/moves")
@@ -128,6 +157,7 @@ def study_plan(username: str, session: Session = Depends(get_session)) -> dict:
     return stats.study_plan(session, username.lower())
 
 
+# Legacy single-page dashboard, kept for local use until the Next.js frontend replaces it.
 @app.get("/", include_in_schema=False)
 def index() -> FileResponse:
     return FileResponse(STATIC_DIR / "index.html")
