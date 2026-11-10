@@ -5,7 +5,7 @@ from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
@@ -157,7 +157,16 @@ def study_plan(username: str, session: Session = Depends(get_session)) -> dict:
     return stats.study_plan(session, username.lower())
 
 
-# Legacy single-page dashboard, kept for local use until the Next.js frontend replaces it.
+FRONTEND_URL = os.getenv("FRONTEND_URL", "https://maxwellrobbins.com/chessapp/")
+
+
+# The API has no UI of its own; send browsers to the real site.
 @app.get("/", include_in_schema=False)
-def index() -> FileResponse:
+def index() -> RedirectResponse:
+    return RedirectResponse(FRONTEND_URL)
+
+
+# Legacy vanilla-JS dashboard, still handy for local debugging.
+@app.get("/legacy", include_in_schema=False)
+def legacy() -> FileResponse:
     return FileResponse(STATIC_DIR / "index.html")
