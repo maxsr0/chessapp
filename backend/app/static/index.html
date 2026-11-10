@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ChessIQ</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 0 auto; max-width: 1100px; padding: 16px; color: #222; background: #fafafa; }
+  h1 { margin: 0 0 12px; }
+  .bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+  input, button { font: inherit; padding: 6px 10px; }
+  button { cursor: pointer; }
+  #status { color: #555; }
+  nav button.active { background: #333; color: #fff; }
+  .cards { display: flex; gap: 12px; flex-wrap: wrap; margin: 12px 0; }
+  .card { background: #fff; border: 1px solid #ddd; border-radius: 6px; padding: 10px 14px; min-width: 120px; }
+  .card b { display: block; font-size: 1.4em; }
+  table { border-collapse: collapse; width: 100%; background: #fff; margin: 8px 0 20px; font-size: 14px; }
+  th, td { border: 1px solid #ddd; padding: 4px 8px; text-align: left; }
+  th { background: #eee; }
+  tr.click { cursor: pointer; } tr.click:hover { background: #f0f6ff; }
+  .blunder { color: #c00; font-weight: bold; } .mistake { color: #e67e00; } .inaccuracy { color: #b8a100; }
+  .best { color: #080; } .good { color: #4a4; }
+  .chart { background: #fff; border: 1px solid #ddd; padding: 8px; margin-bottom: 16px; height: 260px; }
+  .board { display: inline-grid; grid-template-columns: repeat(8, 32px); border: 2px solid #333; font-size: 26px; line-height: 32px; text-align: center; vertical-align: top; }
+  .board div { width: 32px; height: 32px; } .board .l { background: #f0d9b5; } .board .d { background: #b58863; }
+  .row { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<h1>ChessIQ</h1>
+<div class="bar">
+  <input id="user" value="bestplayerduck" placeholder="chess.com username">
+  <input id="limit" type="number" value="200" min="1" max="1000" style="width:80px" title="games to import">
+  <button onclick="importGames()">1. Import</button>
+  <button onclick="analyze()">2. Analyze</button>
+  <button onclick="loadAll()">Refresh</button>
+  <span id="status"></span>
+</div>
+<nav class="bar">
+  <button data-tab="overview" class="active">Overview</button>
+  <button data-tab="openings">Openings</button>
+  <button data-tab="weaknesses">Weaknesses</button>
+  <button data-tab="games">Games</button>
+</nav>
+
+<section id="overview"></section>
+<section id="openings" class="hidden"></section>
+<section id="weaknesses" class="hidden"></section>
+<section id="games" class="hidden"></section>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const user = () => $("user").value.trim().toLowerCase();
+const api = async (path, opts) => {
+  const r = await fetch(path, opts);
+  if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
+  return r.json();
+};
+const status = (t) => ($("status").textContent = t);
+const charts = {};
+function chart(id, config) {
+  charts[id]?.destroy();
+  charts[id] = new Chart($(id), { ...config, options: { maintainAspectRatio: false, ...config.options } });
+}
+const fmt = (v) => (typeof v === "number" ? Math.round(v * 10) / 10 : v ?? "");
+function table(rows, cols, onClick) {
+  if (!rows.length) return "<p>No data.</p>";
+  const head = cols.map((c) => `<th>${c[1]}</th>`).join("");
+  const body = rows.map((r, i) =>
+    `<tr ${onClick ? `class="click" data-i="${i}"` : ""}>${cols.map((c) => {
+      const v = c[2] ? c[2](r) : fmt(r[c[0]]);
+      return `<td>${v}</td>`;
+    }).join("")}</tr>`).join("");
+  return `<table><tr>${head}</tr>${body}</table>`;
+}
+
+// tabs
+document.querySelectorAll("nav button").forEach((b) => b.onclick = () => {
+  document.querySelectorAll("nav button").forEach((x) => x.classList.toggle("active", x === b));
+  document.querySelectorAll("section").forEach((s) => s.classList.toggle("hidden", s.id !== b.dataset.tab));
+});
+
+async function importGames() {
+  status("Importing from chess.com...");
+  try {
+    const r = await api(`/players/${user()}/import?limit=${$("limit").value}`, { method: "POST" });
+    status(`Fetched ${r.fetched}, added ${r.added} new games.`);
+    loadAll();
+  } catch (e) { status("Error: " + e.message); }
+}
+
+async function analyze() {
+  await api(`/players/${user()}/analyze`, { method: "POST" });
+  poll();
+}
+
+async function poll() {
+  const s = await api(`/players/${user()}/analysis-status`);
+  const done = s.counts.done || 0, total = Object.values(s.counts).reduce((a, b) => a + b, 0);
+  status(`Analysis: ${done}/${total} games done${s.running ? " (running...)" : ""}`);
+  if (s.running) setTimeout(poll, 3000); else loadAll();
+}
+
+async function loadAll() {
+  const u = user();
+  const [o, op, w, g] = await Promise.all([
+    api(`/players/${u}/stats/overview`),
+    api(`/players/${u}/stats/openings?min_games=${3}`),
+    api(`/players/${u}/stats/weaknesses`),
+    api(`/players/${u}/games?limit=500`),
+  ]);
+  renderOverview(o); renderOpenings(op); renderWeaknesses(w); renderGames(g.games);
+}
+
+function renderOverview(o) {
+  const el = $("overview");
+  if (!o.games) { el.innerHTML = "<p>No games yet. Click Import, then Analyze.</p>"; return; }
+  const c = o.classification_counts;
+  el.innerHTML = `
+    <div class="cards">
+      <div class="card">Games<b>${o.games}</b></div>
+      <div class="card">W / D / L<b>${o.results.win || 0} / ${o.results.draw || 0} / ${o.results.loss || 0}</b></div>
+      <div class="card">Win rate<b>${o.win_rate}%</b></div>
+      <div class="card">Avg accuracy<b>${o.avg_accuracy ?? "-"}</b></div>
+      <div class="card">Blunders<b class="blunder">${c.blunder || 0}</b></div>
+      <div class="card">Mistakes<b class="mistake">${c.mistake || 0}</b></div>
+    </div>
+    <h3>Rating</h3><div class="chart"><canvas id="ratingChart"></canvas></div>
+    <h3>By month</h3><div class="chart"><canvas id="monthChart"></canvas></div>
+    <h3>By time control</h3>
+    ${table(o.by_time_class, [["time_class", "Time class"], ["games", "Games"], ["win_rate", "Win %"], ["accuracy", "Accuracy"]])}`;
+
+  const classes = [...new Set(o.rating_history.map((r) => r.time_class))];
+  const labels = o.rating_history.map((r) => r.end_time);
+  chart("ratingChart", {
+    type: "line",
+    data: { labels, datasets: classes.map((tc) => ({
+      label: tc, spanGaps: true, pointRadius: 0,
+      data: o.rating_history.map((r) => (r.time_class === tc ? r.player_rating : null)),
+    })) },
+  });
+  chart("monthChart", {
+    type: "bar",
+    data: { labels: o.by_month.map((m) => m.month), datasets: [
+      { label: "Accuracy", data: o.by_month.map((m) => m.accuracy), yAxisID: "y" },
+      { label: "Blunders / game", data: o.by_month.map((m) => m.blunders_per_game), yAxisID: "y2", type: "line" },
+    ] },
+    options: { scales: { y: { min: 50, max: 100 }, y2: { position: "right", min: 0 } } },
+  });
+}
+
+function renderOpenings(rows) {
+  $("openings").innerHTML = `<p>Opening families with 3+ games. "Opening errors / game" = mistakes + blunders in your first 10 moves.</p>` +
+    table(rows, [["opening", "Opening"], ["color", "Color"], ["games", "Games"],
+      ["wins", "W"], ["draws", "D"], ["losses", "L"], ["win_rate", "Win %"],
+      ["accuracy", "Accuracy"], ["opening_errors_per_game", "Opening errors / game"]]);
+}
+
+const TAG_LABELS = {
+  allowed_capture: "Hung material (opponent's best reply was a capture)",
+  allowed_mate: "Allowed mate", missed_mate: "Missed a forced mate", time_trouble: "Low on clock",
+};
+
+function renderWeaknesses(w) {
+  const el = $("weaknesses");
+  if (!w.by_phase) { el.innerHTML = "<p>Run analysis first.</p>"; return; }
+  const tags = Object.entries(w.tags).map(([k, v]) => ({ tag: TAG_LABELS[k] || k, count: v }));
+  el.innerHTML = `
+    <h3>Errors by game phase</h3>
+    ${table(w.by_phase, [["phase", "Phase"], ["moves", "Moves"], ["errors", "Mistakes+Blunders"], ["blunders", "Blunders"], ["errors_per_100_moves", "Errors / 100 moves"], ["accuracy", "Accuracy"]])}
+    <h3>What your mistakes have in common</h3>
+    ${table(tags, [["tag", "Pattern"], ["count", "Count"]])}
+    <p>Error rate when low on clock: <b>${w.time_trouble.error_rate_low_clock ?? "-"}%</b> vs normal: <b>${w.time_trouble.error_rate_normal ?? "-"}%</b></p>
+    <h3>Errors per 100 moves, by month</h3><div class="chart"><canvas id="trendChart"></canvas></div>
+    <h3>Worst blunders (click to see the position)</h3>
+    <div class="row"><div id="blunderList" style="flex:1"></div><div id="blunderBoard"></div></div>`;
+  chart("trendChart", { type: "line", data: { labels: w.trend.map((t) => t.month),
+    datasets: [{ label: "Errors / 100 moves", data: w.trend.map((t) => t.errors_per_100_moves) }] } });
+
+  $("blunderList").innerHTML = table(w.worst_blunders, [
+    ["san", "You played", (r) => `<span class="blunder">${r.san}</span>`], ["best_move", "Best"],
+    ["win_drop", "Win % lost"], ["phase", "Phase"], ["opening", "Opening"],
+    ["tags", "Tags", (r) => r.tags.join(", ")]], true);
+  $("blunderList").querySelectorAll("tr.click").forEach((tr) => tr.onclick = () => {
+    const b = w.worst_blunders[tr.dataset.i];
+    $("blunderBoard").innerHTML = board(b.fen_before) + `<p>${b.fen_before.includes(" w ") ? "White" : "Black"} to move. You played <b>${b.san}</b>, best was <b>${b.best_move}</b>.</p>`;
+  });
+}
+
+function renderGames(games) {
+  $("games").innerHTML = `<div class="row"><div style="flex:1" id="gameList"></div></div><div id="gameDetail"></div>`;
+  $("gameList").innerHTML = table(games, [
+    ["end_time", "Date", (g) => g.end_time.slice(0, 10)], ["time_class", "Type"], ["color", "Color"],
+    ["result", "Result"], ["opponent", "Opponent", (g) => `${g.opponent} (${g.opponent_rating})`],
+    ["opening", "Opening"], ["accuracy", "Accuracy"]], true);
+  $("gameList").querySelectorAll("tr.click").forEach((tr) => tr.onclick = () => showGame(games[tr.dataset.i]));
+}
+
+async function showGame(g) {
+  const { moves } = await api(`/games/${g.id}/moves`);
+  const el = $("gameDetail");
+  el.innerHTML = `<h3>vs ${g.opponent}: ${g.result} as ${g.color} (<a href="${g.url}" target="_blank">chess.com</a>)</h3>
+    <div class="chart"><canvas id="evalChart"></canvas></div>
+    <div class="row"><div id="moveTable" style="flex:1;max-height:500px;overflow:auto"></div><div id="gameBoard"></div></div>`;
+  el.scrollIntoView();
+  const whiteEval = moves.map((m) => Math.max(-1000, Math.min(1000, m.color === "white" ? m.eval_after : -m.eval_after)) / 100);
+  chart("evalChart", { type: "line", data: { labels: moves.map((m) => m.ply),
+    datasets: [{ label: "Eval (White's view, pawns)", data: whiteEval, pointRadius: 0, fill: true }] } });
+  $("moveTable").innerHTML = table(moves, [["ply", "#"], ["color", "Side"],
+    ["san", "Move", (m) => `<span class="${m.classification}">${m.san}</span>`],
+    ["classification", "Class", (m) => `<span class="${m.classification}">${m.classification}</span>`],
+    ["best_move", "Best"], ["win_drop", "Win % lost"], ["clock", "Clock (s)"]], true);
+  $("moveTable").querySelectorAll("tr.click").forEach((tr) => tr.onclick = () => {
+    const m = moves[tr.dataset.i];
+    $("gameBoard").innerHTML = board(m.fen_before, g.color === "black") + `<p>Before ${m.san}. Best: ${m.best_move ?? "-"}</p>`;
+  });
+}
+
+// simple unicode board from a FEN
+const GLYPH = { K: "♔", Q: "♕", R: "♖", B: "♗", N: "♘", P: "♙", k: "♚", q: "♛", r: "♜", b: "♝", n: "♞", p: "♟" };
+function board(fen, flip = fen.split(" ")[1] === "b") {
+  let squares = [];
+  fen.split(" ")[0].split("/").forEach((rank) => {
+    for (const ch of rank) /\d/.test(ch) ? squares.push(...Array(+ch).fill("")) : squares.push(GLYPH[ch]);
+  });
+  let cells = squares.map((p, i) => ({ p, dark: (Math.floor(i / 8) + i % 8) % 2 === 1 }));
+  if (flip) cells = cells.reverse();
+  return `<div class="board">${cells.map((c) => `<div class="${c.dark ? "d" : "l"}">${c.p}</div>`).join("")}</div>`;
+}
+
+loadAll().catch((e) => status(e.message));
+</script>
+</body>
+</html>

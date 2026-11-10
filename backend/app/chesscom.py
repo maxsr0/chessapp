@@ -59,8 +59,25 @@ def opening_from_eco_url(eco_url: str | None) -> str | None:
     for token in eco_url.rstrip("/").rsplit("/", 1)[-1].split("-"):
         if token[:1].isdigit():
             break  # move sequence starts here
+        if "..." in token:  # e.g. "System...3.b3"
+            words.append(token.split("...")[0])
+            break
         words.append(token)
-    return " ".join(words) or None
+    return " ".join(w for w in words if w) or None
+
+
+FAMILY_ENDINGS = ("Defense", "Opening", "Gambit", "Game", "Attack", "System")
+
+
+def opening_family(name: str | None) -> str | None:
+    """'Caro Kann Defense Advance Variation' -> 'Caro Kann Defense'."""
+    if not name:
+        return None
+    words = name.split()
+    for i, w in enumerate(words):
+        if w in FAMILY_ENDINGS:
+            return " ".join(words[: i + 1])
+    return " ".join(words[:2])
 
 
 def normalize_result(code: str) -> str:

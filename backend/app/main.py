@@ -1,10 +1,15 @@
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
+from pathlib import Path
+
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query
+from fastapi.responses import FileResponse
 from sqlmodel import Session, func, select
 
-from app import chesscom, jobs
+from app import chesscom, jobs, stats
+
+STATIC_DIR = Path(__file__).parent / "static"
 from app.db import get_session, init_db
 from app.models import Game, MoveAnalysis, Player
 
@@ -96,3 +101,28 @@ def game_moves(game_id: int, session: Session = Depends(get_session)) -> dict:
         select(MoveAnalysis).where(MoveAnalysis.game_id == game_id).order_by(MoveAnalysis.ply)
     ).all()
     return {"game": game.model_dump(exclude={"pgn"}), "moves": moves}
+
+
+@app.get("/players/{username}/stats/overview")
+def stats_overview(username: str, session: Session = Depends(get_session)) -> dict:
+    return stats.overview(session, username.lower())
+
+
+@app.get("/players/{username}/stats/openings")
+def stats_openings(
+    username: str,
+    min_games: int = 3,
+    family: bool = True,
+    session: Session = Depends(get_session),
+) -> list[dict]:
+    return stats.openings(session, username.lower(), min_games, family)
+
+
+@app.get("/players/{username}/stats/weaknesses")
+def stats_weaknesses(username: str, session: Session = Depends(get_session)) -> dict:
+    return stats.weaknesses(session, username.lower())
+
+
+@app.get("/", include_in_schema=False)
+def index() -> FileResponse:
+    return FileResponse(STATIC_DIR / "index.html")
