@@ -26,3 +26,22 @@ class Game(SQLModel, table=True):
     opening: str | None = None
     pgn: str
     analysis_status: str = "pending"  # pending | done | error
+    accuracy: float | None = None  # player's average move accuracy
+
+
+class MoveAnalysis(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    game_id: int = Field(foreign_key="game.id", index=True)
+    ply: int
+    color: str  # who made this move
+    is_player: bool  # True if the analyzed player made it
+    san: str
+    uci: str
+    fen_before: str
+    eval_before: int  # centipawns, mover's perspective
+    eval_after: int
+    win_drop: float
+    accuracy: float
+    classification: str  # best | good | inaccuracy | mistake | blunder
+    best_move: str | None
+    clock: float | None

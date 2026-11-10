@@ -19,4 +19,5 @@ ChessIQ: enter a Chess.com username, import games via the public API, analyze ev
 - Chess.com API: send a descriptive `User-Agent`, make requests one at a time (parallel calls get rate-limited), and cache monthly archives.
 - Always store evals from the analyzed player's point of view: `score.pov(color).score(mate_score=10000)`.
 - Classify moves by the drop in win probability (Lichess formula), not raw centipawn loss.
-- Use fixed engine limits (depth or nodes) so analysis is reproducible.
+- Use fixed engine limits (depth or nodes) so analysis is reproducible. Depth comes from `ANALYSIS_DEPTH` in `.env` (default 12).
+- There are no migrations: `create_all` won't add columns to existing tables. After a model change, stop uvicorn (it locks the file), delete `backend/chessiq.db`, then re-import and re-analyze.

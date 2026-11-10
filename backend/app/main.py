@@ -1,12 +1,12 @@
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query
 from sqlmodel import Session, func, select
 
-from app import chesscom
+from app import chesscom, jobs
 from app.db import get_session, init_db
-from app.models import Game, Player
+from app.models import Game, MoveAnalysis, Player
 
 
 @asynccontextmanager
@@ -65,3 +65,34 @@ def list_games(
         select(Game).where(Game.username == username).order_by(Game.end_time.desc()).limit(limit)
     ).all()
     return {"total": total, "games": [g.model_dump(exclude={"pgn"}) for g in games]}
+
+
+@app.post("/players/{username}/analyze")
+def start_analysis(username: str, background: BackgroundTasks) -> dict:
+    username = username.lower()
+    if not jobs.try_start(username):
+        return {"started": False, "reason": "already running"}
+    background.add_task(jobs.analyze_player, username)
+    return {"started": True}
+
+
+@app.get("/players/{username}/analysis-status")
+def analysis_status(username: str, session: Session = Depends(get_session)) -> dict:
+    username = username.lower()
+    rows = session.exec(
+        select(Game.analysis_status, func.count())
+        .where(Game.username == username)
+        .group_by(Game.analysis_status)
+    ).all()
+    return {"running": jobs.is_running(username), "counts": dict(rows)}
+
+
+@app.get("/games/{game_id}/moves")
+def game_moves(game_id: int, session: Session = Depends(get_session)) -> dict:
+    game = session.get(Game, game_id)
+    if not game:
+        raise HTTPException(404, "Game not found")
+    moves = session.exec(
+        select(MoveAnalysis).where(MoveAnalysis.game_id == game_id).order_by(MoveAnalysis.ply)
+    ).all()
+    return {"game": game.model_dump(exclude={"pgn"}), "moves": moves}
