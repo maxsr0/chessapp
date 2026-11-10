@@ -21,6 +21,17 @@ def test_phase():
     assert phase("4k3/8/8/8/8/8/4R3/4K3 w - - 0 40", 79) == "endgame"
 
 
+def test_study_plan_endpoint_empty_player():
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+
+    with TestClient(app) as c:
+        r = c.get("/players/nobody-xyz-123/study-plan")
+    assert r.status_code == 200
+    assert r.json() == {"priorities": [], "puzzles": []}
+
+
 def test_base_seconds():
     assert base_seconds("180+2") == 180
     assert base_seconds("1/86400") is None

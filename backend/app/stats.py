@@ -165,6 +165,83 @@ def openings(session: Session, username: str, min_games: int = 3, family: bool =
     return _records(agg.reset_index())
 
 
+TAG_ADVICE = {
+    "allowed_capture": (
+        "You hang material",
+        "Before each move, check every piece the opponent can capture after it (blunder check).",
+    ),
+    "allowed_mate": ("You allow mating attacks", "Check for opponent checks and mate threats before moving."),
+    "missed_mate": ("You miss forced mates", "Practice mate-in-2/3 puzzles; look for checks first when ahead."),
+    "time_trouble": ("Your errors come when low on time", "Spend less time early; play faster in the opening you know."),
+}
+
+
+def study_plan(session: Session, username: str) -> dict:
+    """Rank the player's weaknesses and pick puzzles from their own blunders."""
+    g = games_df(session, username)
+    m = moves_df(session, username)
+    if g.empty or m.empty:
+        return {"priorities": [], "puzzles": []}
+
+    items = []  # (score, title, detail)
+
+    # 1. Weakest phase relative to the average error rate
+    ph = m.groupby("phase")["is_error"].mean() * 100
+    avg = m["is_error"].mean() * 100
+    worst = ph.idxmax()
+    items.append((
+        ph[worst] / avg,
+        f"Most errors in the {worst}",
+        f"{ph[worst]:.1f} mistakes+blunders per 100 moves vs {avg:.1f} overall. "
+        + {"opening": "Review your opening lines and principles.",
+           "middlegame": "Do tactics puzzles and slow down in sharp positions.",
+           "endgame": "Study basic endgames (king activity, rook endings)."}[worst],
+    ))
+
+    # 2. Most common mistake pattern
+    errors = m[m["is_error"]]
+    tag_counts = errors["tags"].explode().dropna().value_counts().drop("time_trouble", errors="ignore")
+    for tag, count in tag_counts.head(2).items():
+        title, advice = TAG_ADVICE.get(tag, (tag, ""))
+        share = count / max(len(errors), 1)
+        items.append((1 + share, title, f"{count} of your {len(errors)} errors ({share:.0%}). {advice}"))
+
+    # 3. Openings that score much worse than your average
+    overall_wr = (g["result"] == "win").mean() * 100
+    fam = g.assign(family=g["opening"].map(opening_family))
+    op = fam.groupby(["family", "color"]).agg(games=("id", "count"), wr=("result", lambda s: (s == "win").mean() * 100))
+    for (name, color), r in op[(op["games"] >= 5) & (op["wr"] < overall_wr - 10)].sort_values("wr").head(2).iterrows():
+        n = int(r.games)
+        items.append((
+            1 + (overall_wr - r.wr) / 100 * (n ** 0.5),
+            f"You struggle in the {name} (as {color})",
+            f"{r.wr:.0f}% wins in {n} games vs {overall_wr:.0f}% overall. Study its typical plans and traps.",
+        ))
+
+    # 4. Time trouble effect
+    timed = m[m["base_time"].notna() & m["clock"].notna()]
+    if not timed.empty:
+        low = timed["clock"] < (0.1 * timed["base_time"]).clip(lower=20)
+        if low.sum() >= 30:
+            lo, hi = timed[low]["is_error"].mean(), timed[~low]["is_error"].mean()
+            if hi and lo > 1.3 * hi:
+                items.append((lo / hi, "You crack under time pressure",
+                              f"Error rate {lo:.0%} when low on clock vs {hi:.0%} otherwise. Manage your clock earlier."))
+
+    items.sort(key=lambda x: x[0], reverse=True)
+    priorities = [{"rank": i + 1, "title": t, "detail": d} for i, (_, t, d) in enumerate(items)]
+
+    # Puzzles: your blunders where you weren't already lost and a best move exists
+    pz = m[
+        (m["classification"].isin(ERRORS))
+        & m["best_move"].notna()
+        & (m["eval_before"] > -150)
+        & (m["win_drop"] >= 15)
+    ].sort_values("end_time", ascending=False).head(40)
+    puzzles = _records(pz[["game_id", "ply", "fen_before", "san", "best_move", "win_drop", "phase", "opening", "tags"]])
+    return {"priorities": priorities, "puzzles": puzzles}
+
+
 def weaknesses(session: Session, username: str) -> dict:
     m = moves_df(session, username)
     if m.empty:

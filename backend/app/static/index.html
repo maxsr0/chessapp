@@ -44,12 +44,14 @@
   <button data-tab="openings">Openings</button>
   <button data-tab="weaknesses">Weaknesses</button>
   <button data-tab="games">Games</button>
+  <button data-tab="study">Study plan</button>
 </nav>
 
 <section id="overview"></section>
 <section id="openings" class="hidden"></section>
 <section id="weaknesses" class="hidden"></section>
 <section id="games" class="hidden"></section>
+<section id="study" class="hidden"></section>
 
 <script>
 const $ = (id) => document.getElementById(id);
@@ -106,13 +108,67 @@ async function poll() {
 
 async function loadAll() {
   const u = user();
-  const [o, op, w, g] = await Promise.all([
+  const [o, op, w, g, sp] = await Promise.all([
     api(`/players/${u}/stats/overview`),
     api(`/players/${u}/stats/openings?min_games=${3}`),
     api(`/players/${u}/stats/weaknesses`),
     api(`/players/${u}/games?limit=500`),
+    api(`/players/${u}/study-plan`),
   ]);
-  renderOverview(o); renderOpenings(op); renderWeaknesses(w); renderGames(g.games);
+  renderOverview(o); renderOpenings(op); renderWeaknesses(w); renderGames(g.games); renderStudy(sp);
+}
+
+// ---- Study plan + puzzles from your own blunders ----
+let puzzles = [], pIdx = 0;
+const norm = (s) => (s || "").replace(/[+#!?\s]/g, "").toLowerCase();
+const scoreKey = () => `chessiq-score-${user()}`;
+function getScore() { try { return JSON.parse(localStorage.getItem(scoreKey())) || { right: 0, tried: 0 }; } catch { return { right: 0, tried: 0 }; } }
+function saveScore(s) { try { localStorage.setItem(scoreKey(), JSON.stringify(s)); } catch {} }
+
+function renderStudy(sp) {
+  puzzles = sp.puzzles; pIdx = 0;
+  $("study").innerHTML = `
+    <h3>Your priorities</h3>
+    ${sp.priorities.length ? `<ol>${sp.priorities.map((p) => `<li><b>${p.title}</b><br>${p.detail}</li>`).join("")}</ol>` : "<p>Run analysis first.</p>"}
+    <h3>Puzzles from your own games</h3>
+    <p>Each position is from a game where you made a mistake. Find the move you should have played (type it like <code>Nf3</code>, <code>exd5</code>, <code>O-O</code>).</p>
+    <div class="row"><div id="pBoard"></div><div id="pPanel" style="flex:1"></div></div>`;
+  showPuzzle();
+}
+
+function showPuzzle() {
+  if (!puzzles.length) { $("pPanel").innerHTML = "<p>No puzzles yet.</p>"; return; }
+  const p = puzzles[pIdx], s = getScore();
+  const side = p.fen_before.split(" ")[1] === "w" ? "White" : "Black";
+  $("pBoard").innerHTML = board(p.fen_before);
+  $("pPanel").innerHTML = `
+    <p>Puzzle ${pIdx + 1} / ${puzzles.length} · ${p.phase} · ${p.opening ?? ""} · score ${s.right}/${s.tried}</p>
+    <p><b>${side} to move.</b> Find the best move.</p>
+    <input id="pAns" placeholder="your move" onkeydown="if(event.key==='Enter')checkPuzzle()">
+    <button onclick="checkPuzzle()">Check</button>
+    <button onclick="revealPuzzle()">Reveal</button>
+    <button onclick="pIdx=(pIdx+1)%puzzles.length;showPuzzle()">Next</button>
+    <p id="pResult"></p>`;
+  $("pAns").focus();
+}
+
+function checkPuzzle() {
+  const p = puzzles[pIdx], s = getScore(), ok = norm($("pAns").value) === norm(p.best_move);
+  s.tried++; if (ok) s.right++; saveScore(s);
+  $("pResult").innerHTML = ok
+    ? `<span class="best">Correct! ${p.best_move}</span> (in the game you played ${p.san})`
+    : `<span class="blunder">Not quite.</span> Try again or reveal.`;
+}
+
+function revealPuzzle() {
+  const p = puzzles[pIdx];
+  $("pResult").innerHTML = `Best was <b class="best">${p.best_move}</b>. You played <b class="blunder">${p.san}</b>, losing ${fmt(p.win_drop)}% win chance. <a href="#" onclick="openGame(${p.game_id});return false">Open game</a>`;
+}
+
+async function openGame(id) {
+  const g = (await api(`/players/${user()}/games?limit=500`)).games.find((x) => x.id === id);
+  document.querySelector('nav button[data-tab="games"]').click();
+  showGame(g);
 }
 
 function renderOverview(o) {

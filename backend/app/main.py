@@ -123,6 +123,11 @@ def stats_weaknesses(username: str, session: Session = Depends(get_session)) -> 
     return stats.weaknesses(session, username.lower())
 
 
+@app.get("/players/{username}/study-plan")
+def study_plan(username: str, session: Session = Depends(get_session)) -> dict:
+    return stats.study_plan(session, username.lower())
+
+
 @app.get("/", include_in_schema=False)
 def index() -> FileResponse:
     return FileResponse(STATIC_DIR / "index.html")
