@@ -190,7 +190,18 @@ function renderOverview(o) {
     <h3>Rating</h3><div class="chart"><canvas id="ratingChart"></canvas></div>
     <h3>By month</h3><div class="chart"><canvas id="monthChart"></canvas></div>
     <h3>By time control</h3>
-    ${table(o.by_time_class, [["time_class", "Time class"], ["games", "Games"], ["win_rate", "Win %"], ["accuracy", "Accuracy"]])}`;
+    ${table(o.by_time_class, [["time_class", "Time class"], ["games", "Games"], ["win_rate", "Win %"], ["accuracy", "Accuracy"]])}
+    <h3>Vs opponent rating (opponent minus you)</h3>
+    ${table(o.by_rating_diff, [["rating_diff", "Rating difference"], ["games", "Games"], ["win_rate", "Win %"], ["accuracy", "Accuracy"]])}
+    <h3>By hour of day (your local time)</h3><div class="chart"><canvas id="hourChart"></canvas></div>`;
+
+  // convert UTC hours to the viewer's local hour
+  const offset = -new Date().getTimezoneOffset() / 60;
+  const hours = o.by_hour.map((h) => ({ ...h, local: ((+h.hour + offset) % 24 + 24) % 24 })).sort((a, b) => a.local - b.local);
+  chart("hourChart", { type: "bar", data: { labels: hours.map((h) => `${h.local}:00`), datasets: [
+    { label: "Win %", data: hours.map((h) => h.win_rate) },
+    { label: "Games", data: hours.map((h) => h.games), type: "line", yAxisID: "y2" },
+  ] }, options: { scales: { y: { min: 0, max: 100 }, y2: { position: "right", min: 0 } } } });
 
   const classes = [...new Set(o.rating_history.map((r) => r.time_class))];
   const labels = o.rating_history.map((r) => r.end_time);

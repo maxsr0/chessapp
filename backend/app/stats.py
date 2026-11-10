@@ -137,7 +137,24 @@ def overview(session: Session, username: str) -> dict:
         )
         by_month["blunders_per_game"] = per_game.groupby("month").mean()
 
+    def win_table(key) -> list[dict]:
+        t = g.groupby(key, observed=True).agg(
+            games=("id", "count"),
+            win_rate=("result", lambda s: 100 * (s == "win").mean()),
+            accuracy=("accuracy", "mean"),
+        )
+        return _records(t.reset_index().astype({t.index.name or key: str}))
+
+    g["rating_diff"] = pd.cut(
+        g["opponent_rating"] - g["player_rating"],
+        bins=[-10000, -200, -100, -25, 25, 100, 200, 10000],
+        labels=["-200 or lower", "-200 to -100", "-100 to -25", "even (±25)", "+25 to +100", "+100 to +200", "+200 or higher"],
+    )
+    g["hour"] = g["end_time"].dt.tz_convert(None).dt.hour  # UTC hour the game ended
+
     return {
+        "by_rating_diff": win_table("rating_diff"),
+        "by_hour": win_table("hour"),
         "games": len(g),
         "results": results,
         "win_rate": round(100 * results.get("win", 0) / len(g), 1),
