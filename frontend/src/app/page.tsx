@@ -32,13 +32,13 @@ export default function Home() {
   return (
     <>
       <section className="relative isolate overflow-hidden border-b border-accent/60">
-        <HeroPiece className="relative h-[58svh] min-h-[360px] max-h-[620px] lg:absolute lg:inset-0 lg:h-auto lg:max-h-none" />
+        <HeroPiece className="relative h-[58svh] min-h-[360px] max-h-[620px] lg:absolute lg:inset-0 lg:h-auto lg:max-h-none max-lg:[mask-image:linear-gradient(to_bottom,#000_92%,transparent)]" />
         {/* keeps the copy legible where it overlaps the floor */}
         <div
           aria-hidden
           className="hidden lg:block absolute inset-y-0 left-0 w-[58%] bg-gradient-to-r from-paper via-paper/80 to-transparent pointer-events-none"
         />
-        <div className="wrap relative z-10 -mt-16 lg:mt-0 pb-14 lg:py-24 lg:min-h-[min(860px,calc(100svh-59px))] flex items-center pointer-events-none">
+        <div className="wrap relative z-10 -mt-2 lg:mt-0 pb-14 lg:py-24 lg:min-h-[min(860px,calc(100svh-59px))] flex items-center pointer-events-none">
           <div className="w-full min-w-0 max-w-[560px] pointer-events-auto">
             <div className="rise" style={{ "--d": "0.05s" } as React.CSSProperties}>
               <span className="label inline-flex items-center gap-2">

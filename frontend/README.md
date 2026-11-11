@@ -1,36 +1,50 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ChessIQ frontend
 
-## Getting Started
+The Next.js site for ChessIQ. For the overall project, the backend and deployment, see the [root README](../README.md).
 
-First, run the development server:
+> This is Next.js 16. APIs differ from older versions, so read `AGENTS.md` and `node_modules/next/dist/docs/` before changing Next APIs.
+
+## Commands
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+NEXT_PUBLIC_API_URL=http://127.0.0.1:8000 npm run dev   # http://localhost:3000/chessapp
+npm run build          # static export to out/
+npx tsc --noEmit       # type check
+npx eslint src         # lint
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+The site is a static export (`output: "export"`) served under `basePath: /chessapp`. All data is fetched in the browser, so `cacheComponents` and PPR stay off; they don't work with static export. Pages that use query parameters (`/player?u=`, `/game?id=`) read `useSearchParams` inside a `<Suspense>` boundary.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Design system
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- **Type:** Archivo (display), Inter (body), JetBrains Mono (labels), shared with maxwellrobbins.com.
+- **Palette:** tokens in `src/app/globals.css`. Dark green felt with a brass accent is the default. Cream light mode is opt-in via `data-theme="light"`, which the header toggle sets and `localStorage` remembers.
+- **Charts:** series colors were contrast-checked against both themes. Keep one y-axis per chart, and keep text in ink colors (colored dots carry the meaning).
+- **Motion:** shared pieces live in `src/components/motion.tsx`:
+  - `Reveal`, a scroll-in fade;
+  - `NumberTicker`, count-up numbers;
+  - `SpotlightCard`, a cursor glow;
+  - `Segmented`, the pill radio group used instead of native `<select>`s.
 
-## Learn More
+  Above-the-fold hero text animates with CSS (`.rise`), so it shows before JavaScript loads. Every animation respects `prefers-reduced-motion`.
 
-To learn more about Next.js, take a look at the following resources:
+## The hero king
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+`src/components/HeroKingScene.tsx` renders the king with react-three-fiber. It's loaded on the client only, through `HeroPiece.tsx`, which shows an SVG silhouette until the model is ready and also when WebGL is unavailable.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- **Model:** `public/models/kings.glb` (about 620 KB) contains the white and black kings from Poly Haven's CC0 “Chess Set”. Dark mode shows the white king and light mode the black one.
+- **Staging:** the piece only spins on its vertical axis. The intro dolly, cursor parallax and scroll move the camera, never the piece. The model is measured at load, scaled to a fixed height and set so its lowest point sits exactly on the floor.
+- **Grounding:** a light pool plus two radial shadow discs, sized from the measured foot radius. Lighting is a local studio environment (`Lightformer` cards), so there's no HDR download.
+- **Performance:** rendering pauses when the hero scrolls out of view. The Draco decoder is disabled because the file uses meshopt, whose decoder is bundled; Draco would load its decoder from a CDN.
 
-## Deploy on Vercel
+### Regenerating the model
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```bash
+# 1. Download the 1K glTF (chess_set_1k.gltf, chess_set.bin, textures/*.jpg) from
+#    https://polyhaven.com/a/chess_set into an empty folder.
+# 2. Trim it to the two kings: WebP textures, meshopt compression.
+node scripts/prepare-king.mjs <that-folder>
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+The script writes `public/models/kings.glb`, with nodes named `king_white` and `king_black`.

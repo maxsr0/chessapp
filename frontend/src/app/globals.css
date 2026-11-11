@@ -30,6 +30,9 @@
   --sq-light: #e6dcc3;
   --sq-dark: #3f6b55;
   --felt-glow: rgba(212, 166, 74, 0.08);
+  --spot-warm: rgba(212, 166, 74, 0.16);
+  --spot-sheen: rgba(239, 233, 220, 0.07);
+  --shimmer-mid: #1c2c24;
 }
 :root[data-theme="light"] {
   color-scheme: light;
@@ -54,6 +57,9 @@
   --sq-light: #ece3cc;
   --sq-dark: #4f7d66;
   --felt-glow: rgba(154, 107, 18, 0.06);
+  --spot-warm: rgba(154, 107, 18, 0.12);
+  --spot-sheen: rgba(255, 255, 255, 0.5);
+  --shimmer-mid: #e3dccb;
 }
 
 @theme inline {
@@ -168,16 +174,6 @@ body {
   animation: rise 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
   animation-delay: var(--d, 0s);
 }
-/* 3D stage fades in, and its floor dissolves into the page at the bottom edge */
-@keyframes fade-in {
-  from {
-    opacity: 0;
-  }
-}
-.hero-fade {
-  animation: fade-in 1.2s ease-out both;
-  mask-image: linear-gradient(to bottom, #000 84%, transparent);
-}
 /* skeleton shimmer, a softer cue than a blinking pulse */
 @keyframes shimmer {
   to {
@@ -185,12 +181,11 @@ body {
   }
 }
 .shimmer {
-  background: linear-gradient(90deg, var(--hair) 0%, color-mix(in oklab, var(--hair) 40%, var(--panel)) 50%, var(--hair) 100%) 0 0 / 200% 100%;
+  background: linear-gradient(90deg, var(--hair) 0%, var(--shimmer-mid) 50%, var(--hair) 100%) 0 0 / 200% 100%;
   animation: shimmer 1.6s linear infinite;
 }
 @media (prefers-reduced-motion: reduce) {
   .rise,
-  .hero-fade,
   .shimmer {
     animation: none;
   }
@@ -271,8 +266,8 @@ input:focus-visible {
   inset: 0;
   pointer-events: none;
   background:
-    radial-gradient(28% 46% at var(--spot-x, 50%) 30%, color-mix(in oklab, var(--accent) 16%, transparent), transparent 72%),
-    radial-gradient(60% 50% at var(--spot-x, 50%) 0%, color-mix(in oklab, var(--ink) 7%, transparent), transparent 70%);
+    radial-gradient(28% 46% at var(--spot-x, 50%) 30%, var(--spot-warm), transparent 72%),
+    radial-gradient(60% 50% at var(--spot-x, 50%) 0%, var(--spot-sheen), transparent 70%);
 }
 @media (min-width: 1024px) {
   .hero-spot {
