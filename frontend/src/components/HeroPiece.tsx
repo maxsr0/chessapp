@@ -37,5 +37,10 @@ const noop = () => () => {};
 export function HeroPiece({ className }: { className?: string }) {
   // false on the server and during hydration, so the static HTML is the silhouette.
   const webgl = useSyncExternalStore(noop, hasWebGL, () => false);
-  return <div className={clsx("hero-fade", className)}>{webgl ? <Scene /> : <KingSilhouette />}</div>;
+  return (
+    <div className={clsx("hero-fade", className)}>
+      <div className="hero-spot" aria-hidden />
+      {webgl ? <Scene /> : <KingSilhouette />}
+    </div>
+  );
 }

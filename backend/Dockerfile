@@ -7,6 +7,7 @@ RUN apt-get update \
 
 ENV STOCKFISH_PATH=/usr/games/stockfish \
     ANALYSIS_DEPTH=10 \
+    ANALYSIS_WORKERS=1 \
     PYTHONUNBUFFERED=1
 
 WORKDIR /app

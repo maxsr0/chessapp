@@ -64,3 +64,20 @@ def test_process_one_fifo(session):
         assert first.analysis_status == "done"
         assert first.accuracy is not None
         assert jobs.process_one(session, sf) is False  # queue empty
+
+
+def test_claim_is_exclusive_and_requeue(session):
+    make_game(session, "alice", "u1")
+    make_game(session, "alice", "u2")
+    jobs.enqueue(session, "alice")
+
+    a = jobs._claim(session)
+    b = jobs._claim(session)
+    assert a is not None and b is not None and a.id != b.id  # two workers, two different games
+    assert jobs._claim(session) is None  # nothing left to take
+    assert jobs.queue_status(session, "alice")["running"] is True  # still analyzing
+
+    # a restart puts in-flight games back in the queue
+    assert jobs.requeue_interrupted(session) == 2
+    session.expire_all()
+    assert {g.analysis_status for g in session.exec(select(Game))} == {"queued"}

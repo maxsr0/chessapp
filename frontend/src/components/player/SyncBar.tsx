@@ -4,13 +4,15 @@ import { RefreshCw } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import { Segmented } from "@/components/motion";
 
+const LIMITS = [25, 50, 100] as const;
 const STAT_KEYS = ["overview", "openings", "weaknesses", "study", "games"];
 
 /** Import + analyze controls, with live queue progress while the worker runs. */
 export function SyncBar({ username, autoStart }: { username: string; autoStart: boolean }) {
   const qc = useQueryClient();
-  const [limit, setLimit] = useState(50);
+  const [limit, setLimit] = useState<(typeof LIMITS)[number]>(50);
   const autoStarted = useRef(false);
 
   const status = useQuery({
@@ -48,7 +50,7 @@ export function SyncBar({ username, autoStart }: { username: string; autoStart: 
 
   const counts = status.data?.counts ?? {};
   const total = Object.values(counts).reduce((a, b) => a + (b ?? 0), 0);
-  const queued = counts.queued ?? 0;
+  const remaining = (counts.queued ?? 0) + (counts.analyzing ?? 0);
   const ahead = status.data?.games_ahead ?? 0;
   const progress = total ? done / total : 0;
 
@@ -59,7 +61,7 @@ export function SyncBar({ username, autoStart }: { username: string; autoStart: 
     message =
       ahead > 0
         ? `Waiting in line: ${ahead} game${ahead === 1 ? "" : "s"} from other players ahead of yours`
-        : `Analyzing with Stockfish: ${done} of ${total} games done, ${queued} to go`;
+        : `Analyzing with Stockfish: ${done} of ${total} games done, ${remaining} to go`;
   else if (total) message = `${done} games analyzed${counts.error ? `, ${counts.error} failed` : ""}`;
   else message = "No games imported yet";
 
@@ -70,20 +72,7 @@ export function SyncBar({ username, autoStart }: { username: string; autoStart: 
           <span className={sync.isError ? "text-[var(--q-blunder)]" : "text-body"}>{message}</span>
         </p>
         <div className="flex items-center gap-3">
-          <label className="label flex items-center gap-2">
-            Games
-            <select
-              value={limit}
-              onChange={(e) => setLimit(Number(e.target.value))}
-              className="bg-transparent border border-hair rounded px-1.5 py-1 font-mono text-ink"
-            >
-              {[25, 50, 100].map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
-            </select>
-          </label>
+          <Segmented label="Games" value={limit} options={LIMITS} onChange={setLimit} disabled={sync.isPending || running} />
           <button className="btn" onClick={() => sync.mutate()} disabled={sync.isPending || running}>
             <RefreshCw size={15} className={sync.isPending || running ? "animate-spin" : ""} />
             {total ? "Update" : "Import & analyze"}

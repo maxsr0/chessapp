@@ -265,3 +265,17 @@ input:focus-visible {
     animation: none;
   }
 }
+/* soft overhead light pooling behind the hero king (it sits right of the copy on wide screens) */
+.hero-spot {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(28% 46% at var(--spot-x, 50%) 30%, color-mix(in oklab, var(--accent) 16%, transparent), transparent 72%),
+    radial-gradient(60% 50% at var(--spot-x, 50%) 0%, color-mix(in oklab, var(--ink) 7%, transparent), transparent 70%);
+}
+@media (min-width: 1024px) {
+  .hero-spot {
+    --spot-x: 70%;
+  }
+}

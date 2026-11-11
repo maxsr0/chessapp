@@ -6,6 +6,7 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api, type Game } from "@/lib/api";
 import { Empty, Skeleton, num } from "@/components/ui";
+import { Segmented } from "@/components/motion";
 
 // Same polarity colors as the openings W/D/L bar; the word carries the meaning, the dot is a cue.
 const RESULT_DOT: Record<Game["result"], string> = {
@@ -13,25 +14,6 @@ const RESULT_DOT: Record<Game["result"], string> = {
   draw: "var(--hovermuted)",
   loss: "var(--q-blunder)",
 };
-
-function Select<T extends string>({ label, value, options, onChange }: { label: string; value: T; options: T[]; onChange: (v: T) => void }) {
-  return (
-    <label className="label flex items-center gap-2">
-      {label}
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value as T)}
-        className="bg-transparent border border-hair rounded px-1.5 py-1 font-mono text-ink normal-case tracking-normal"
-      >
-        {options.map((o) => (
-          <option key={o} value={o}>
-            {o}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
-}
 
 export function GamesTab({ username }: { username: string }) {
   const { data, isLoading } = useQuery({ queryKey: ["games", username], queryFn: () => api.games(username) });
@@ -63,9 +45,9 @@ export function GamesTab({ username }: { username: string }) {
           placeholder="Search opening or opponent"
           className="flex-1 min-w-48 bg-transparent border-b border-hair focus:border-accent outline-none py-1.5"
         />
-        <Select label="Result" value={result} options={["all", "win", "draw", "loss"]} onChange={setResult} />
-        <Select label="Color" value={color} options={["all", "white", "black"]} onChange={setColor} />
-        <Select label="Type" value={tc} options={timeClasses} onChange={setTc} />
+        <Segmented label="Result" value={result} options={["all", "win", "draw", "loss"] as const} onChange={setResult} />
+        <Segmented label="Color" value={color} options={["all", "white", "black"] as const} onChange={setColor} />
+        {timeClasses.length > 2 && <Segmented label="Type" value={tc} options={timeClasses} onChange={setTc} />}
         <span className="label">{rows.length} games</span>
       </div>
 

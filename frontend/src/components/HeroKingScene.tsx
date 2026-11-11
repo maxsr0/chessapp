@@ -5,39 +5,78 @@ import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { ContactShadows, Environment, Lightformer, MeshReflectorMaterial } from "@react-three/drei";
 import * as THREE from "three";
 
-// Staunton king profile as (radius, height) control points, bottom to top.
-// A Catmull-Rom spline through these is spun into a solid with LatheGeometry.
-const KING_PROFILE: [number, number][] = [
-  [0, 0], [1.08, 0], [1.13, 0.05], [1.12, 0.15], [1.02, 0.2], [0.98, 0.27], [1.02, 0.33], [0.9, 0.41],
-  [0.74, 0.5], [0.56, 0.7], [0.44, 1.05], [0.37, 1.45], [0.34, 1.78], [0.52, 1.84], [0.58, 1.9],
-  [0.45, 1.97], [0.52, 2.02], [0.41, 2.08], [0.44, 2.22], [0.58, 2.46], [0.69, 2.63], [0.63, 2.69],
-  [0.5, 2.71], [0.46, 2.77], [0.34, 2.87], [0.16, 2.94], [0, 2.96],
-];
-const CROWN_Y = 2.65;
-const CROWN_R = 0.67;
+/* ---------- geometry ---------- */
 
+/**
+ * Staunton king half-profile (radius, height), bottom to top, built like a lathe-turned piece:
+ * straight runs joined by small fillets, beads, a cove, a flared stem and a tulip crown.
+ * Arcs (not one big spline) keep the machined edges crisp but never razor-sharp.
+ */
+function kingProfile(): THREE.Vector2[] {
+  const p: THREE.Vector2[] = [];
+  const to = (r: number, y: number) => p.push(new THREE.Vector2(r, y));
+  const arc = (cx: number, cy: number, R: number, a0: number, a1: number, n = 10) => {
+    for (let i = 0; i <= n; i++) {
+      const a = THREE.MathUtils.degToRad(a0 + ((a1 - a0) * i) / n);
+      to(cx + R * Math.cos(a), cy + R * Math.sin(a));
+    }
+  };
+  const curve = (r: (t: number) => number, y0: number, y1: number, n = 28) => {
+    for (let i = 0; i <= n; i++) {
+      const t = i / n;
+      to(r(t), y0 + (y1 - y0) * t);
+    }
+  };
+
+  to(0, 0);
+  arc(1.05, 0.03, 0.03, -90, 0, 4); // foot: underside fillet
+  arc(1.05, 0.14, 0.03, 0, 90, 4); // foot: top fillet
+  arc(1.0, 0.24, 0.07, -90, 90, 14); // base bead
+  arc(0.96, 0.47, 0.16, 270, 180, 14); // cove
+  arc(0.8, 0.51, 0.04, -90, 90, 8); // fillet ring
+  curve((t) => 0.36 + 0.34 * Math.pow(1 - t, 2.4), 0.56, 1.62); // flared stem
+  arc(0.54, 1.68, 0.04, -90, 90, 8); // lower collar disk
+  arc(0.44, 1.77, 0.05, -90, 90, 10); // collar bead
+  arc(0.6, 1.87, 0.04, -90, 90, 8); // upper collar disk
+  to(0.38, 1.93);
+  to(0.38, 2.0); // neck
+  curve((t) => 0.38 + 0.34 * Math.pow(t, 1.8), 2.0, 2.58, 24); // tulip crown
+  arc(0.72, 2.62, 0.04, -90, 90, 8); // crown rim
+  to(0.62, 2.68);
+  for (let i = 0; i <= 16; i++) {
+    const a = THREE.MathUtils.degToRad((80 * i) / 16); // dome (quarter ellipse)
+    to(0.6 * Math.cos(a), 2.7 + 0.3 * Math.sin(a));
+  }
+  arc(0, 3.08, 0.1, -60, 90, 12); // finial ball
+  return p;
+}
+const CROSS_Y = 3.47;
+
+/** Cross pattée: arms flare toward their ends, with a soft bevel. */
 function crossGeometry() {
-  const w = 0.09, h = 0.34, arm = 0.27, t = 0.085, armY = 0.1; // half-widths/heights
+  const w = 0.062, f = 0.105, fa = 0.088, armY = 0.08, armX = 0.26, top = 0.3, bot = -0.32;
   const s = new THREE.Shape();
-  s.moveTo(-w, -h);
-  s.lineTo(w, -h);
-  s.lineTo(w, armY - t);
-  s.lineTo(arm, armY - t);
-  s.lineTo(arm, armY + t);
-  s.lineTo(w, armY + t);
-  s.lineTo(w, h);
-  s.lineTo(-w, h);
-  s.lineTo(-w, armY + t);
-  s.lineTo(-arm, armY + t);
-  s.lineTo(-arm, armY - t);
-  s.lineTo(-w, armY - t);
+  s.moveTo(-f, bot);
+  s.lineTo(f, bot);
+  s.lineTo(w, armY - w);
+  s.lineTo(armX, armY - fa);
+  s.lineTo(armX, armY + fa);
+  s.lineTo(w, armY + w);
+  s.lineTo(f, top);
+  s.lineTo(-f, top);
+  s.lineTo(-w, armY + w);
+  s.lineTo(-armX, armY + fa);
+  s.lineTo(-armX, armY - fa);
+  s.lineTo(-w, armY - w);
   s.closePath();
-  const g = new THREE.ExtrudeGeometry(s, { depth: 0.14, bevelEnabled: true, bevelThickness: 0.035, bevelSize: 0.03, bevelSegments: 4 });
+  const g = new THREE.ExtrudeGeometry(s, { depth: 0.09, bevelEnabled: true, bevelThickness: 0.035, bevelSize: 0.028, bevelSegments: 6 });
   g.center();
   return g;
 }
 
-type Palette = { light: boolean; accent: string; paper: string; sqLight: string; sqDark: string };
+/* ---------- theme ---------- */
+
+type Palette = { light: boolean; accent: string; paper: string };
 
 function readPalette(): Palette {
   const s = getComputedStyle(document.documentElement);
@@ -46,8 +85,6 @@ function readPalette(): Palette {
     light: document.documentElement.getAttribute("data-theme") === "light",
     accent: v("--accent", "#d4a64a"),
     paper: v("--paper", "#0f1a15"),
-    sqLight: v("--sq-light", "#e6dcc3"),
-    sqDark: v("--sq-dark", "#3f6b55"),
   };
 }
 
@@ -61,11 +98,12 @@ function usePalette() {
   return p;
 }
 
-/** 8x8 board texture, tiled across the floor. */
-function useBoardTexture(a: string, b: string) {
+/** Low-contrast board squares: a hint of chess under the piece, not a pattern that competes with it. */
+function useBoardTexture(light: boolean) {
   const tex = useMemo(() => {
+    const [a, b] = light ? ["#e8dfca", "#dccfb3"] : ["#15231c", "#1b2e24"];
     const c = document.createElement("canvas");
-    c.width = c.height = 512;
+    c.width = c.height = 256;
     const ctx = c.getContext("2d")!;
     const n = 8, sz = c.width / n;
     for (let y = 0; y < n; y++)
@@ -76,79 +114,68 @@ function useBoardTexture(a: string, b: string) {
     const t = new THREE.CanvasTexture(c);
     t.colorSpace = THREE.SRGBColorSpace;
     t.wrapS = t.wrapT = THREE.RepeatWrapping;
-    t.repeat.set(2.5, 2.5);
+    t.repeat.set(3, 3);
     t.anisotropy = 8;
     return t;
-  }, [a, b]);
+  }, [light]);
   useEffect(() => () => tex.dispose(), [tex]);
   return tex;
 }
 
-function King({ palette, reduced }: { palette: Palette; reduced: boolean }) {
+/* ---------- scene ---------- */
+
+function King({ light, reduced }: { light: boolean; reduced: boolean }) {
   const group = useRef<THREE.Group>(null);
   const intro = useRef(reduced ? 1 : 0);
-  const body = useMemo(() => {
-    const curve = new THREE.SplineCurve(KING_PROFILE.map(([x, y]) => new THREE.Vector2(x, y)));
-    const pts = curve.getPoints(200).map((p) => new THREE.Vector2(Math.max(0, p.x), p.y));
-    return new THREE.LatheGeometry(pts, 160);
-  }, []);
+
+  const body = useMemo(() => new THREE.LatheGeometry(kingProfile(), 180), []);
   const cross = useMemo(() => crossGeometry(), []);
-  const beads = useMemo(
-    () =>
-      Array.from({ length: 14 }, (_, i) => {
-        const a = (i / 14) * Math.PI * 2;
-        return [Math.cos(a) * CROWN_R, CROWN_Y + 0.05, Math.sin(a) * CROWN_R] as const;
-      }),
-    [],
+  useEffect(
+    () => () => {
+      body.dispose();
+      cross.dispose();
+    },
+    [body, cross],
   );
 
+  // Polished boxwood/ivory in dark mode, black lacquer in light mode.
   const material = useMemo(
     () =>
-      palette.light
-        ? new THREE.MeshPhysicalMaterial({ color: "#16130f", roughness: 0.22, clearcoat: 1, clearcoatRoughness: 0.08, envMapIntensity: 1.2 })
+      light
+        ? new THREE.MeshPhysicalMaterial({ color: "#0e0d0c", roughness: 0.16, clearcoat: 1, clearcoatRoughness: 0.04, envMapIntensity: 1.6 })
         : new THREE.MeshPhysicalMaterial({
-            color: "#f1e8d4",
-            roughness: 0.32,
-            clearcoat: 0.8,
-            clearcoatRoughness: 0.15,
-            sheen: 0.5,
-            sheenColor: new THREE.Color("#fff1cf"),
-            envMapIntensity: 1.1,
+            color: "#efe5cf",
+            roughness: 0.24,
+            clearcoat: 1,
+            clearcoatRoughness: 0.06,
+            sheen: 0.35,
+            sheenColor: new THREE.Color("#fff4dc"),
+            envMapIntensity: 1.25,
           }),
-    [palette.light],
+    [light],
   );
   useEffect(() => () => material.dispose(), [material]);
 
-  useFrame(({ pointer }, rawDt) => {
+  useFrame(({ pointer, clock }, rawDt) => {
     const g = group.current;
     if (!g) return;
-    const dt = Math.min(rawDt, 1 / 30); // no jumps after a stalled frame
-    intro.current = Math.min(1, intro.current + dt * 0.7);
+    const dt = Math.min(rawDt, 1 / 30); // no rotation jumps after a stalled frame
+    // Intro runs on wall-clock time, so a slow or throttled device still lands the piece on time.
+    if (intro.current < 1) intro.current = Math.min(1, clock.elapsedTime / 1.5);
     const e = 1 - Math.pow(1 - intro.current, 4); // easeOutQuart
     // The piece is set down onto the board, then lifts a little as the page scrolls.
     const scroll = Math.min(window.scrollY, 800);
-    g.position.set(0, -1.45 + (1 - e) * 1.1 + scroll * 0.001, 0);
+    g.position.y = -1.45 + (1 - e) * 1.1 + scroll * 0.001;
     if (reduced) return;
-    g.rotation.y += dt * 0.18 * (0.4 + e * 0.6);
-    g.rotation.x = THREE.MathUtils.damp(g.rotation.x, -pointer.y * 0.08, 3, dt);
-    g.rotation.z = THREE.MathUtils.damp(g.rotation.z, pointer.x * 0.05, 3, dt);
+    g.rotation.y += dt * 0.16 * (0.4 + e * 0.6);
+    g.rotation.x = THREE.MathUtils.damp(g.rotation.x, -pointer.y * 0.07, 3, dt);
+    g.rotation.z = THREE.MathUtils.damp(g.rotation.z, pointer.x * 0.045, 3, dt);
   });
 
   return (
     <group ref={group} rotation={[0, 0.6, 0]} scale={1.08}>
       <mesh geometry={body} material={material} />
-      <mesh position={[0, CROWN_Y, 0]} rotation={[Math.PI / 2, 0, 0]} material={material}>
-        <torusGeometry args={[CROWN_R, 0.026, 12, 120]} />
-      </mesh>
-      {beads.map((p, i) => (
-        <mesh key={i} position={p} material={material}>
-          <sphereGeometry args={[0.045, 16, 12]} />
-        </mesh>
-      ))}
-      <mesh position={[0, 3.01, 0]} material={material}>
-        <sphereGeometry args={[0.11, 24, 16]} />
-      </mesh>
-      <mesh geometry={cross} position={[0, 3.43, 0]} material={material} />
+      <mesh geometry={cross} position={[0, CROSS_Y, 0]} material={material} />
     </group>
   );
 }
@@ -160,25 +187,26 @@ function Stage({ children }: { children: React.ReactNode }) {
   return <group position={[wide ? viewport.width * 0.2 : 0, 0, 0]}>{children}</group>;
 }
 
-function Floor({ palette }: { palette: Palette }) {
-  const map = useBoardTexture(palette.sqLight, palette.sqDark);
+function Floor({ light }: { light: boolean }) {
+  const map = useBoardTexture(light);
   return (
     <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -1.46, 0]}>
       <planeGeometry args={[40, 40]} />
       <MeshReflectorMaterial
         map={map}
-        color={palette.light ? "#f4f1ea" : "#5d6259"}
         resolution={1024}
-        blur={[400, 120]}
-        mixBlur={1}
-        mixStrength={palette.light ? 1.2 : 2.2}
-        mixContrast={1}
-        depthScale={1}
-        minDepthThreshold={0.4}
-        maxDepthThreshold={1.4}
-        mirror={0.6}
-        roughness={0.85}
-        metalness={0.1}
+        blur={[260, 80]}
+        mixBlur={0.8}
+        // The mirror also reflects the transparent (black) sky: fine on felt, muddy on cream,
+        // so light mode keeps only a faint, close reflection.
+        mixStrength={light ? 0.6 : 5}
+        mixContrast={1.1}
+        depthScale={light ? 2 : 1.1}
+        minDepthThreshold={0.35}
+        maxDepthThreshold={light ? 0.9 : 1.3}
+        mirror={light ? 0.2 : 0.85}
+        roughness={light ? 1 : 0.7}
+        metalness={light ? 0 : 0.2}
       />
     </mesh>
   );
@@ -198,41 +226,41 @@ function useInView(ref: React.RefObject<HTMLElement | null>) {
 }
 
 export default function HeroKingScene() {
-  const palette = usePalette();
+  const { light, accent, paper } = usePalette();
   const [reduced] = useState(() => window.matchMedia("(prefers-reduced-motion: reduce)").matches);
   const wrap = useRef<HTMLDivElement>(null);
   const inView = useInView(wrap);
-  const fog = useMemo(() => new THREE.Color(palette.paper), [palette.paper]);
+  const fog = useMemo(() => new THREE.Color(paper), [paper]);
 
   return (
     <div ref={wrap} className="absolute inset-0">
       <Canvas
         dpr={[1, 2]}
         frameloop={!inView ? "never" : reduced ? "demand" : "always"}
-        camera={{ position: [0, 1.1, 11], fov: 30 }}
-        gl={{ antialias: true, alpha: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.05 }}
-        onCreated={({ camera }) => camera.lookAt(0, 0.3, 0)}
+        camera={{ position: [0, 0.75, 11], fov: 28 }}
+        gl={{ antialias: true, alpha: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: light ? 1.0 : 1.1 }}
+        onCreated={({ camera }) => camera.lookAt(0, 0.45, 0)}
         resize={{ debounce: 0 }}
         aria-hidden
       >
-        <fog attach="fog" args={[fog, 10, 24]} />
-        <ambientLight intensity={0.15} />
-        <directionalLight position={[3, 6, 4]} intensity={1.4} />
-        {/* brass rim lights from behind */}
-        <spotLight position={[-4, 5, -4]} angle={0.5} penumbra={1} intensity={140} color={palette.accent} />
-        <pointLight position={[3.5, 1.5, -2.5]} intensity={45} color={palette.accent} />
-        <spotLight position={[2, 9, 5]} angle={0.35} penumbra={0.9} intensity={palette.light ? 60 : 90} />
+        <fog attach="fog" args={[fog, 9, 21]} />
+        <ambientLight intensity={0.08} />
+        {/* key light from above-left, and a brass kicker from behind */}
+        <spotLight position={[-3, 8, 5]} angle={0.32} penumbra={1} intensity={light ? 70 : 110} />
+        <spotLight position={[3, 4, -5]} angle={0.5} penumbra={1} intensity={90} color={accent} />
         <Stage>
-          <King palette={palette} reduced={reduced} />
-          <ContactShadows position={[0, -1.45, 0]} opacity={palette.light ? 0.55 : 0.8} scale={10} blur={2.4} far={2.5} resolution={512} />
+          <King light={light} reduced={reduced} />
+          <ContactShadows position={[0, -1.449, 0]} opacity={light ? 0.5 : 0.85} scale={8} blur={2.2} far={2.2} resolution={512} />
         </Stage>
-        <Floor palette={palette} />
-        {/* local studio environment: no network fetch, just glowing cards for reflections */}
-        <Environment resolution={256} frames={1}>
-          <Lightformer form="rect" intensity={3} position={[0, 5, -6]} scale={[10, 3, 1]} />
-          <Lightformer form="rect" intensity={2} position={[-6, 2, 1]} rotation-y={Math.PI / 2} scale={[8, 1.2, 1]} />
-          <Lightformer form="rect" intensity={1.4} position={[6, 1, 2]} rotation-y={-Math.PI / 2} scale={[8, 0.8, 1]} />
-          <Lightformer form="ring" color={palette.accent} intensity={4} position={[-3, 3, -4]} scale={2.5} />
+        <Floor light={light} />
+        {/* Studio environment built from glowing cards (no HDR download). Tall strips give the
+            long vertical highlights that make a turned piece read as polished. */}
+        <Environment resolution={512} frames={1}>
+          <Lightformer form="rect" intensity={4} position={[-4, 1, 3]} rotation-y={Math.PI / 3} scale={[0.6, 9, 1]} />
+          <Lightformer form="rect" intensity={2.5} position={[4.5, 1, 2]} rotation-y={-Math.PI / 3} scale={[0.4, 9, 1]} />
+          <Lightformer form="rect" intensity={1.6} position={[0, 6, 0]} rotation-x={Math.PI / 2} scale={[6, 6, 1]} />
+          <Lightformer form="rect" intensity={1} position={[0, 3, 8]} scale={[8, 2, 1]} />
+          <Lightformer form="ring" color={accent} intensity={6} position={[2, 2, -5]} scale={3} />
         </Environment>
       </Canvas>
     </div>

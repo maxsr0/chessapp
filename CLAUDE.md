@@ -19,7 +19,7 @@ Deployment target: the backend runs as a Docker image on Render's free tier (`re
   - `chesscom.py`: API client and opening names.
   - `models.py`
   - `analysis.py`: Stockfish eval and move classification.
-  - `jobs.py`: **one global worker thread** with one Stockfish process. It works through `Game.analysis_status == "queued"` oldest-first (by `queued_at`), across all users. Queued games survive restarts.
+  - `jobs.py`: a global queue served by `ANALYSIS_WORKERS` threads, each with its own single-threaded Stockfish process (default: min(4, cores−1); Docker sets 1 for Render's free tier). Workers claim the oldest `queued` game (by `queued_at`, across all users) with a conditional UPDATE to `analyzing`, so no two take the same game. Queued games survive restarts, and `analyzing` ones are re-queued at startup. SQLite runs in WAL mode with a 30 s busy timeout for the concurrent writers.
   - `patterns.py`: tactic tags, from the position plus the opponent's best reply.
   - `stats.py`: pandas aggregation and the study plan. The moves DataFrame is cached per user, keyed by analyzed-game count. Phase and tags are computed at query time, not stored.
 - `POST /players/{u}/sync` = import + enqueue. Import is capped by `MAX_IMPORT` (default 100). It's rate-limited per IP with `slowapi`, and CORS comes from `ALLOWED_ORIGINS`.
@@ -32,7 +32,7 @@ Deployment target: the backend runs as a Docker image on Render's free tier (`re
   - Deploy: `.github/workflows/pages.yml` publishes `frontend/out` to GitHub Pages.
 
 ## Conventions and gotchas
-- Config comes from env vars, which `.env` loads locally: `DATABASE_URL` (SQLite by default; `postgres://` URLs are rewritten to `postgresql+psycopg://`), `STOCKFISH_PATH`, `ANALYSIS_DEPTH` (12 locally, 10 in Docker), `MAX_IMPORT`, `ALLOWED_ORIGINS`, and `RUN_WORKER` (set to `0` to skip the worker; the tests do this).
+- Config comes from env vars, which `.env` loads locally: `DATABASE_URL` (SQLite by default; `postgres://` URLs are rewritten to `postgresql+psycopg://`), `STOCKFISH_PATH`, `ANALYSIS_DEPTH` (12 locally, 10 in Docker), `ANALYSIS_WORKERS`, `MAX_IMPORT`, `ALLOWED_ORIGINS`, and `RUN_WORKER` (set to `0` to skip the worker; the tests do this).
 - Tests use a temp SQLite DB set up in `tests/conftest.py`. Env vars must be set before `app` is imported.
 - Chess.com API: send a descriptive `User-Agent` and make requests one at a time (parallel calls get rate-limited).
 - `MoveAnalysis.eval_before/eval_after` are from the *mover's* point of view (`score.pov(board.turn).score(mate_score=10000)`; mate in N = ±(10000−N)). Use `is_player` to select the analyzed player's moves; for a White-POV graph, negate Black's moves.

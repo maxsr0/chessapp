@@ -2,7 +2,7 @@
 
 import clsx from "clsx";
 import { animate, motion, useInView, useMotionTemplate, useMotionValue, useReducedMotion } from "motion/react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 const EASE = [0.22, 1, 0.36, 1] as const; // easeOutQuint-ish: fast in, long settle
 
@@ -100,6 +100,79 @@ export function SpotlightCard({
         style={{ background: bg }}
       />
       {children}
+    </div>
+  );
+}
+
+/**
+ * A small radio group drawn as pills, with a brass thumb that slides to the selection.
+ * Replaces native <select>s, whose open menus can't be themed.
+ */
+export function Segmented<T extends string | number>({
+  label,
+  value,
+  options,
+  onChange,
+  disabled,
+  format = (o) => String(o),
+}: {
+  label: string;
+  value: T;
+  options: readonly T[];
+  onChange: (v: T) => void;
+  disabled?: boolean;
+  format?: (o: T) => string;
+}) {
+  const id = useId();
+  return (
+    <div className="flex items-center gap-2.5">
+      <span className="label" id={id}>
+        {label}
+      </span>
+      <div
+        role="radiogroup"
+        aria-labelledby={id}
+        className={clsx(
+          "relative inline-flex rounded-full border border-hair bg-panel/60 p-0.5",
+          disabled && "opacity-50 pointer-events-none",
+        )}
+        onKeyDown={(e) => {
+          const step = e.key === "ArrowRight" || e.key === "ArrowDown" ? 1 : e.key === "ArrowLeft" || e.key === "ArrowUp" ? -1 : 0;
+          if (!step) return;
+          e.preventDefault();
+          const i = (options.indexOf(value) + step + options.length) % options.length;
+          onChange(options[i]);
+          (e.currentTarget.children[i] as HTMLElement | undefined)?.focus();
+        }}
+      >
+        {options.map((o) => {
+          const on = o === value;
+          return (
+            <button
+              key={String(o)}
+              type="button"
+              role="radio"
+              aria-checked={on}
+              tabIndex={on ? 0 : -1}
+              disabled={disabled}
+              onClick={() => onChange(o)}
+              className={clsx(
+                "relative z-0 rounded-full px-3 py-1 font-mono text-[13px] capitalize transition-colors duration-200",
+                on ? "text-on-accent" : "text-muted hover:text-ink",
+              )}
+            >
+              {on && (
+                <motion.span
+                  layoutId={`seg-${id}`}
+                  className="absolute inset-0 -z-10 rounded-full bg-accent"
+                  transition={{ type: "spring", stiffness: 520, damping: 38 }}
+                />
+              )}
+              {format(o)}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

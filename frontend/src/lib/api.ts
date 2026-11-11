@@ -45,7 +45,7 @@ export interface Game {
   rated: boolean;
   end_time: string;
   opening: string | null;
-  analysis_status: "pending" | "queued" | "done" | "error";
+  analysis_status: "pending" | "queued" | "analyzing" | "done" | "error";
   accuracy: number | null;
 }
 
