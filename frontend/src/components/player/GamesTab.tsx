@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { ArrowRight } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api, type Game } from "@/lib/api";
@@ -73,9 +74,9 @@ export function GamesTab({ username }: { username: string }) {
           <li key={g.id}>
             <Link
               href={`/game?id=${g.id}&u=${encodeURIComponent(username)}`}
-              className="row-hover grid grid-cols-[1fr_auto] sm:grid-cols-[88px_1fr_auto_auto] gap-x-5 gap-y-1 items-center px-3 py-4 border-b border-hair"
+              className="row-hover grid grid-cols-[1fr_auto] sm:grid-cols-[108px_1fr_auto_auto_20px] gap-x-5 gap-y-1 items-center px-3 py-4 border-b border-hair"
             >
-              <span className="label hidden sm:block">{g.end_time.slice(0, 10)}</span>
+              <span className="label hidden sm:block whitespace-nowrap">{g.end_time.slice(0, 10)}</span>
               <span className="min-w-0">
                 <b className="font-semibold">
                   vs {g.opponent} <span className="font-mono text-sm text-muted">({g.opponent_rating})</span>
@@ -91,6 +92,7 @@ export function GamesTab({ username }: { username: string }) {
               <span className="hidden sm:block font-mono text-sm text-right w-24">
                 {g.analysis_status === "done" ? `${num(g.accuracy)} acc` : <span className="text-muted">{g.analysis_status}</span>}
               </span>
+              <ArrowRight size={18} className="row-arrow hidden sm:block text-accent" aria-hidden />
             </Link>
           </li>
         ))}

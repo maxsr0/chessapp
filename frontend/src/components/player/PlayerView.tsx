@@ -4,6 +4,7 @@ import clsx from "clsx";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { api } from "@/lib/api";
 import { Empty } from "@/components/ui";
 import { SyncBar } from "./SyncBar";
@@ -29,6 +30,7 @@ export function PlayerView() {
   const username = (params.get("u") ?? "").trim().toLowerCase();
   const tab = (TABS.find((t) => t.id === params.get("tab"))?.id ?? "overview") as TabId;
 
+  const reduce = useReducedMotion();
   const overview = useQuery({ queryKey: ["overview", username], queryFn: () => api.overview(username), enabled: !!username });
 
   if (!username) {
@@ -51,9 +53,11 @@ export function PlayerView() {
 
   return (
     <div className="wrap pt-10 sm:pt-14">
-      <span className="label block mb-3">Player report</span>
+      <span className="label block mb-3 rise">Player report</span>
       <div className="flex flex-wrap items-end justify-between gap-6 border-b border-ink pb-6">
-        <h1 className="display text-[clamp(40px,8vw,104px)] leading-[0.92] break-all">{username}</h1>
+        <h1 className="display rise text-[clamp(40px,8vw,104px)] leading-[0.92] break-all" style={{ ["--d" as string]: "0.06s" }}>
+          {username}
+        </h1>
         <a
           href={`https://www.chess.com/member/${username}`}
           target="_blank"
@@ -78,21 +82,37 @@ export function PlayerView() {
                 aria-selected={tab === t.id}
                 onClick={() => setTab(t.id)}
                 className={clsx(
-                  "label whitespace-nowrap px-3 py-3 border-b-[2.5px] -mb-px transition-colors",
-                  tab === t.id ? "border-accent !text-ink" : "border-transparent hover:!text-ink",
+                  "label relative whitespace-nowrap px-3 py-3 transition-colors",
+                  tab === t.id ? "!text-ink" : "hover:!text-ink",
                 )}
               >
                 {t.label}
+                {tab === t.id && (
+                  <motion.span
+                    layoutId="player-tab"
+                    className="absolute inset-x-0 -bottom-px h-[2.5px] bg-accent"
+                    transition={{ type: "spring", stiffness: 500, damping: 40 }}
+                  />
+                )}
               </button>
             ))}
           </nav>
-          <div className="pt-8">
-            {tab === "overview" && <OverviewTab username={username} />}
-            {tab === "openings" && <OpeningsTab username={username} />}
-            {tab === "weaknesses" && <WeaknessesTab username={username} />}
-            {tab === "study" && <StudyTab username={username} />}
-            {tab === "games" && <GamesTab username={username} />}
-          </div>
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.div
+              key={tab}
+              className="pt-8"
+              initial={reduce ? false : { opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={reduce ? undefined : { opacity: 0, y: -6 }}
+              transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+            >
+              {tab === "overview" && <OverviewTab username={username} />}
+              {tab === "openings" && <OpeningsTab username={username} />}
+              {tab === "weaknesses" && <WeaknessesTab username={username} />}
+              {tab === "study" && <StudyTab username={username} />}
+              {tab === "games" && <GamesTab username={username} />}
+            </motion.div>
+          </AnimatePresence>
         </>
       )}
     </div>

@@ -154,3 +154,114 @@ body {
 .theme-sun { display: none; }
 :root[data-theme="light"] .theme-sun { display: block; }
 :root[data-theme="light"] .theme-moon { display: none; }
+
+/* ---------- motion ---------- */
+/* Hero copy rises in with CSS, not JS, so it shows before hydration and never waits on WebGL. */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+    filter: blur(6px);
+  }
+}
+.rise {
+  animation: rise 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: var(--d, 0s);
+}
+/* 3D stage fades in, and its floor dissolves into the page at the bottom edge */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+.hero-fade {
+  animation: fade-in 1.2s ease-out both;
+  mask-image: linear-gradient(to bottom, #000 84%, transparent);
+}
+/* skeleton shimmer, a softer cue than a blinking pulse */
+@keyframes shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+.shimmer {
+  background: linear-gradient(90deg, var(--hair) 0%, color-mix(in oklab, var(--hair) 40%, var(--panel)) 50%, var(--hair) 100%) 0 0 / 200% 100%;
+  animation: shimmer 1.6s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .rise,
+  .hero-fade,
+  .shimmer {
+    animation: none;
+  }
+}
+@keyframes grow-x {
+  from {
+    transform: scaleX(0);
+  }
+}
+.grow-x {
+  transform-origin: left;
+  animation: grow-x 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: var(--d, 0s);
+}
+@media (prefers-reduced-motion: reduce) {
+  .grow-x {
+    animation: none;
+  }
+}
+
+/* ---------- interaction details ---------- */
+html {
+  scroll-behavior: smooth;
+}
+body {
+  transition: background-color 0.3s, color 0.3s;
+}
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+/* text fields show focus with their own accent underline */
+input:focus-visible {
+  outline: none;
+}
+/* underline that draws in from the left */
+.link-underline {
+  background: linear-gradient(currentColor, currentColor) 0 100% / 0 1.5px no-repeat;
+  transition: background-size 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.link-underline:hover {
+  background-size: 100% 1.5px;
+}
+/* theme icon swaps with a quarter turn */
+@keyframes spin-in {
+  from {
+    transform: rotate(-90deg) scale(0.6);
+    opacity: 0;
+  }
+}
+.theme-sun,
+.theme-moon {
+  animation: spin-in 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+}
+/* list rows: a brass arrow slides in on hover */
+.row-arrow {
+  opacity: 0;
+  transform: translateX(-6px);
+  transition: opacity 0.2s, transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.row-hover:hover .row-arrow,
+.row-hover:focus-visible .row-arrow {
+  opacity: 1;
+  transform: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .theme-sun,
+  .theme-moon {
+    animation: none;
+  }
+}

@@ -42,7 +42,7 @@ export function Empty({ children }: { children: React.ReactNode }) {
 }
 
 export function Skeleton({ className }: { className?: string }) {
-  return <div className={clsx("animate-pulse bg-hair/60", className)} />;
+  return <div className={clsx("shimmer", className)} />;
 }
 
 export const pct = (v: number | null | undefined, digits = 0) => (v == null ? "–" : `${v.toFixed(digits)}%`);
