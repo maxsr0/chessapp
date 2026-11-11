@@ -4,7 +4,7 @@ import { ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { api } from "@/lib/api";
+import { api, DEMO_PLAYER } from "@/lib/api";
 
 export function SearchForm() {
   const router = useRouter();
@@ -42,8 +42,8 @@ export function SearchForm() {
       </div>
       <span className="text-sm text-muted">
         Or try the{" "}
-        <Link href="/player?u=bestplayerduck" className="text-accent font-semibold hover:underline">
-          demo player
+        <Link href={`/player?u=${DEMO_PLAYER}`} className="text-accent font-semibold hover:underline">
+          demo
         </Link>
         .
       </span>

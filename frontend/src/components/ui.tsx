@@ -34,7 +34,7 @@ export function QualityBadge({ c, withLabel = true }: { c: Classification; withL
 }
 
 export function Panel({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <div className={clsx("border border-hair bg-panel/40 p-4 sm:p-5", className)}>{children}</div>;
+  return <div className={clsx("border border-hair bg-panel/60 shadow-[inset_0_1px_0_var(--felt-glow)] p-4 sm:p-5", className)}>{children}</div>;
 }
 
 export function Empty({ children }: { children: React.ReactNode }) {

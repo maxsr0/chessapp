@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Archivo, Inter, JetBrains_Mono } from "next/font/google";
 import { Providers } from "@/components/Providers";
 import { SiteHeader } from "@/components/SiteHeader";
@@ -20,6 +20,8 @@ export const metadata: Metadata = {
   },
 };
 
+export const viewport: Viewport = { themeColor: "#0f1a15" };
+
 // Apply a saved theme before paint, to avoid a flash of the wrong theme.
 const themeScript = `try{var t=localStorage.getItem("theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t)}catch(e){}`;
 
@@ -37,7 +39,12 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <Providers>
           <SiteHeader />
           <main className="flex-1">{children}</main>
-          <footer className="border-t border-ink mt-20">
+          <footer className="border-t border-accent/60 mt-20">
+            <div className="wrap flex justify-between font-mono text-[11px] text-muted/70 pt-2 select-none" aria-hidden>
+              {"abcdefgh".split("").map((f) => (
+                <span key={f}>{f}</span>
+              ))}
+            </div>
             <div className="wrap flex flex-wrap justify-between gap-2 py-6">
               <span className="label">ChessIQ · Stockfish analysis of Chess.com games</span>
               <a className="label hover:text-accent" href="https://github.com/maxsr0/chessapp">
