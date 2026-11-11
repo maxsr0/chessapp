@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "predev": "node scripts/copy-engine.mjs",
+    "prebuild": "node scripts/copy-engine.mjs"
   },
   "dependencies": {
     "@react-three/drei": "10.0.6",
@@ -21,6 +23,7 @@
     "react-chessboard": "^5.12.1",
     "react-dom": "19.3.0",
     "recharts": "^3.10.1",
+    "stockfish": "17.1.0",
     "three": "0.170.0"
   },
   "devDependencies": {

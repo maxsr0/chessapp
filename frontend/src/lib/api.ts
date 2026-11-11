@@ -123,6 +123,24 @@ export interface QueueStatus {
   games_ahead: number; // other players whose turn may come before ours (round-robin)
 }
 
+export interface ClientWork {
+  game_id: number;
+  token: string;
+  depth: number;
+  start_fen: string;
+  moves: string[]; // UCI; position i = start_fen + moves[0..i)
+  positions: { terminal: boolean }[]; // game-over positions need no engine
+}
+
+// text/plain JSON keeps these CORS "simple requests" (no preflight), which also lets the
+// release call go out with keepalive while a tab is closing.
+const plain = (body: unknown, keepalive = false): RequestInit => ({
+  method: "POST",
+  headers: { "Content-Type": "text/plain" },
+  body: JSON.stringify(body),
+  keepalive,
+});
+
 const u = (name: string) => encodeURIComponent(name.trim().toLowerCase());
 
 export const api = {
@@ -137,6 +155,19 @@ export const api = {
   overview: (name: string) => request<Overview>(`/players/${u(name)}/stats/overview`),
   openings: (name: string) => request<OpeningRow[]>(`/players/${u(name)}/stats/openings?min_games=3`),
   weaknesses: (name: string) => request<Weaknesses>(`/players/${u(name)}/stats/weaknesses`),
+  clientClaim: async (name: string): Promise<ClientWork | null> => {
+    const res = await fetch(`${API_URL}/players/${u(name)}/client-claim`, { method: "POST" });
+    if (res.status === 204) return null;
+    if (!res.ok) throw new ApiError(res.status, res.statusText);
+    return res.json();
+  },
+  clientResult: (work: ClientWork, evals: ({ cp: number; best: string } | null)[]) =>
+    request<{ game_id: number; accuracy: number | null }>(
+      `/games/${work.game_id}/client-result`,
+      plain({ token: work.token, evals }),
+    ),
+  clientRelease: (work: ClientWork) =>
+    fetch(`${API_URL}/games/${work.game_id}/client-release`, plain({ token: work.token }, true)).catch(() => {}),
   studyPlan: (name: string) => request<StudyPlan>(`/players/${u(name)}/study-plan`),
 };
 

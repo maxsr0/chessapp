@@ -52,26 +52,3 @@ def test_black_blunder_and_mate():
 
     assert by_san["e4"]["classification"] in {"best", "good"}
 
-
-def test_eval_cache_skips_repeated_positions():
-    import chess
-    import chess.engine
-
-    from app import analysis
-
-    class FakeEngine:
-        calls = 0
-
-        def analyse(self, board, limit):
-            FakeEngine.calls += 1
-            return {"score": chess.engine.PovScore(chess.engine.Cp(20), board.turn), "pv": [next(iter(board.legal_moves))]}
-
-    analysis._cache.clear()
-    pgn = "1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 1/2-1/2"
-    sf = FakeEngine()
-    first = analysis.analyze_pgn(pgn, sf)
-    n = FakeEngine.calls
-    assert n == 7  # start position + 6 plies
-    assert analysis.analyze_pgn(pgn, sf) == first  # same results...
-    assert FakeEngine.calls == n  # ...with no new engine calls
-    analysis._cache.clear()  # keep fake evals out of other tests

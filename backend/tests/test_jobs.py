@@ -1,3 +1,4 @@
+import json
 import shutil
 from datetime import datetime, timedelta, timezone
 
@@ -108,3 +109,90 @@ def test_round_robin_claim(session):
         order.append((g.username, g.url))
     assert [u for u, _ in order] == ["bob", "alice", "bob", "alice", "alice", "alice", "alice"][:len(order)]
     assert order[0][1] == "b1"  # newest game first within a user
+
+
+# ---- browser analysis ----
+
+def _fake_evals(work):
+    """A legal 'engine' answer for every position: score 0, first legal move."""
+    import chess
+    b = chess.Board(work["start_fen"])
+    out = []
+    for i, p in enumerate(work["positions"]):
+        out.append(None if p["terminal"] else {"cp": 0, "best": next(iter(b.legal_moves)).uci()})
+        if i < len(work["moves"]):
+            b.push_uci(work["moves"][i])
+    return out
+
+
+def _client():
+    from fastapi.testclient import TestClient
+    from app.main import app
+    return TestClient(app)
+
+
+def test_client_claim_submit_roundtrip(session):
+    make_game(session, "alice", "u1")
+    jobs.enqueue(session, "alice")
+    c = _client()
+
+    r = c.post("/players/alice/client-claim")
+    assert r.status_code == 200
+    work = r.json()
+    assert len(work["positions"]) == 8  # start + 7 plies
+    assert work["positions"][-1]["terminal"] is True  # Qxf7#
+    assert c.post("/players/alice/client-claim").status_code == 204  # nothing else queued
+
+    # text/plain body, the way the browser sends it (no CORS preflight)
+    r = c.post(f"/games/{work['game_id']}/client-result",
+               content=json.dumps({"token": work["token"], "evals": _fake_evals(work)}),
+               headers={"content-type": "text/plain"})
+    assert r.status_code == 200, r.text
+    session.expire_all()
+    g = session.get(Game, work["game_id"])
+    assert g.analysis_status == "done" and g.lease_token is None
+    rows = session.exec(select(MoveAnalysis).where(MoveAnalysis.game_id == g.id)).all()
+    assert len(rows) == 7
+
+    # the token can't be reused
+    r = c.post(f"/games/{work['game_id']}/client-result",
+               content=json.dumps({"token": work["token"], "evals": _fake_evals(work)}))
+    assert r.status_code == 409
+
+
+def test_client_bad_result_is_rejected_and_requeued(session):
+    make_game(session, "alice", "u1")
+    jobs.enqueue(session, "alice")
+    c = _client()
+    work = c.post("/players/alice/client-claim").json()
+    evals = _fake_evals(work)
+    evals[1] = {"cp": 0, "best": "e1e8"}  # illegal move
+    r = c.post(f"/games/{work['game_id']}/client-result", content=json.dumps({"token": work["token"], "evals": evals}))
+    assert r.status_code == 422
+    evals[1] = {"cp": 50_000, "best": evals[2]["best"]}  # out of range (and wrong position)
+    session.expire_all()
+    assert session.get(Game, work["game_id"]).analysis_status == "queued"  # back for the server
+
+    wrong = c.post(f"/games/{work['game_id']}/client-result", content=json.dumps({"token": "nope", "evals": evals}))
+    assert wrong.status_code == 409
+
+
+def test_client_release_and_lease_expiry(session):
+    make_game(session, "alice", "u1")
+    jobs.enqueue(session, "alice")
+    c = _client()
+    work = c.post("/players/alice/client-claim").json()
+    assert jobs._claim(session) is None  # leased games aren't taken by server workers
+    assert c.post(f"/games/{work['game_id']}/client-release", content=json.dumps({"token": work["token"]})).status_code == 200
+    session.expire_all()
+    assert session.get(Game, work["game_id"]).analysis_status == "queued"
+
+    # a browser that vanishes: its lease runs out and the game goes back in the queue
+    work = c.post("/players/alice/client-claim").json()
+    g = session.get(Game, work["game_id"])
+    session.refresh(g)
+    g.leased_at = datetime.now(timezone.utc) - jobs.LEASE - timedelta(seconds=1)
+    session.commit()
+    assert jobs.expire_leases(session) == 1
+    session.expire_all()
+    assert session.get(Game, work["game_id"]).lease_token is None

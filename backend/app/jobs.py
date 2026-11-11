@@ -9,14 +9,18 @@ CPU use stays bounded no matter how many people use the site.
 
 import logging
 import os
+import secrets
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
+import chess
 import chess.engine
 from sqlmodel import Session, delete, func, select, update
 
-from app.analysis import analyze_pgn, open_engine
+from app.analysis import (
+    DEPTH, MATE_SCORE, PositionEval, analyze_pgn, build_rows, game_boards, open_engine, terminal_eval,
+)
 from app.db import engine as db_engine
 from app.models import Game, MoveAnalysis
 
@@ -33,6 +37,8 @@ _served_lock = threading.Lock()
 # Parallel engines. Each uses Threads=1, so results stay reproducible. Default leaves a core free.
 WORKERS = max(1, int(os.getenv("ANALYSIS_WORKERS", str(min(4, max(1, (os.cpu_count() or 2) - 1))))))
 ACTIVE = ("queued", "analyzing")
+# A browser that claims a game and then disappears gives it back to the queue after this long.
+LEASE = timedelta(seconds=int(os.getenv("CLIENT_LEASE_SECONDS", "120")))
 
 
 def enqueue(session: Session, username: str) -> int:
@@ -87,6 +93,7 @@ def _next_candidate(session: Session) -> int | None:
 
 def _claim(session: Session) -> Game | None:
     """Atomically take the next game in round-robin order, or None if the queue is empty."""
+    expire_leases(session)
     while True:
         gid = _next_candidate(session)
         if gid is None:
@@ -120,6 +127,11 @@ def process_one(session: Session, sf: chess.engine.SimpleEngine) -> bool:
         session.commit()
         return True
 
+    _store(session, game, rows)
+    return True
+
+
+def _store(session: Session, game: Game, rows: list[dict]) -> None:
     session.exec(delete(MoveAnalysis).where(MoveAnalysis.game_id == game.id))
     mine = []
     for r in rows:
@@ -129,8 +141,113 @@ def process_one(session: Session, sf: chess.engine.SimpleEngine) -> bool:
             mine.append(r["accuracy"])
     game.accuracy = round(sum(mine) / len(mine), 2) if mine else None
     game.analysis_status = "done"
+    game.lease_token = game.leased_at = None
     session.commit()
-    return True
+
+
+# ---- Browser analysis -------------------------------------------------------------------
+# A visitor's browser can run the same Stockfish build (WebAssembly) on their own games. It
+# claims one game at a time with a secret lease token, evaluates the positions, and posts one
+# eval per position. The server checks every value and grades moves with the same
+# build_rows() as its own engine. Server workers keep draining the queue alongside.
+
+
+class InvalidResult(ValueError):
+    pass
+
+
+def expire_leases(session: Session) -> int:
+    cutoff = datetime.now(timezone.utc) - LEASE
+    n = session.exec(
+        update(Game).where(Game.analysis_status == "analyzing", Game.lease_token.is_not(None), Game.leased_at < cutoff)
+        .values(analysis_status="queued", lease_token=None, leased_at=None)
+    ).rowcount
+    session.commit()  # always: an UPDATE that matched nothing still holds SQLite's write lock
+    if n:
+        _wake.set()
+    return n
+
+
+def client_claim(session: Session, username: str) -> dict | None:
+    """Lease this user's newest queued game to a browser. Returns the work, or None."""
+    expire_leases(session)
+    while True:
+        gid = session.exec(
+            select(Game.id).where(Game.username == username, Game.analysis_status == "queued")
+            .order_by(Game.end_time.desc(), Game.id.desc()).limit(1)
+        ).first()
+        if gid is None:
+            return None
+        token = secrets.token_urlsafe(24)
+        took = session.exec(
+            update(Game).where(Game.id == gid, Game.analysis_status == "queued")
+            .values(analysis_status="analyzing", lease_token=token, leased_at=datetime.now(timezone.utc))
+        ).rowcount
+        session.commit()
+        if not took:
+            continue  # a server worker took it first
+        game = session.get(Game, gid)
+        try:
+            parsed, boards = game_boards(game.pgn)
+        except ValueError:
+            game.analysis_status, game.lease_token, game.leased_at = "error", None, None
+            session.commit()
+            continue
+        # Position i = start_fen + the first i moves. The browser sends it to the engine the
+        # same way python-chess does ("position ... moves ..."), so repetition detection and
+        # therefore the evals match the server exactly.
+        positions = [{"terminal": terminal_eval(b) is not None} for b in boards]
+        start = parsed.board().fen()
+        moves = [m.uci() for m in parsed.mainline_moves()]
+        return {
+            "game_id": gid, "token": token, "depth": DEPTH,
+            "start_fen": start, "moves": moves, "positions": positions,
+        }
+
+
+def _lease(session: Session, game_id: int, token: str) -> Game:
+    game = session.get(Game, game_id)
+    if (
+        game is None or game.analysis_status != "analyzing" or not game.lease_token
+        or not secrets.compare_digest(game.lease_token, token)
+    ):
+        raise LookupError("lease not found or expired")
+    return game
+
+
+def client_submit(session: Session, game_id: int, token: str, evals: list[dict | None]) -> Game:
+    """Validate a browser's evals (one per position) and store the graded game."""
+    game = _lease(session, game_id, token)
+    parsed, boards = game_boards(game.pgn)
+    if len(evals) != len(boards):
+        raise InvalidResult(f"expected {len(boards)} evals, got {len(evals)}")
+    out: list[PositionEval] = []
+    for i, (b, e) in enumerate(zip(boards, evals)):
+        if (fixed := terminal_eval(b)) is not None:
+            out.append(fixed)  # game-over positions need no engine; ignore whatever was sent
+            continue
+        if not isinstance(e, dict):
+            raise InvalidResult(f"position {i}: missing eval")
+        cp, best = e.get("cp"), e.get("best")
+        if not isinstance(cp, int) or isinstance(cp, bool) or not -MATE_SCORE < cp < MATE_SCORE:
+            raise InvalidResult(f"position {i}: bad score")
+        try:
+            move = chess.Move.from_uci(best) if isinstance(best, str) else None
+        except ValueError:
+            move = None
+        if move is None or move not in b.legal_moves:
+            raise InvalidResult(f"position {i}: best move is not legal")
+        out.append(PositionEval(cp, move))
+    _store(session, game, build_rows(parsed, out))
+    return game
+
+
+def client_release(session: Session, game_id: int, token: str) -> None:
+    """A browser gives a game back (tab hidden or closed) so the server can finish it."""
+    game = _lease(session, game_id, token)
+    game.analysis_status, game.lease_token, game.leased_at = "queued", None, None
+    session.commit()
+    _wake.set()
 
 
 def _worker() -> None:
@@ -152,7 +269,8 @@ def _worker() -> None:
 def requeue_interrupted(session: Session) -> int:
     """Games left "analyzing" by a crash or restart go back in the queue."""
     n = session.exec(
-        update(Game).where(Game.analysis_status == "analyzing").values(analysis_status="queued")
+        update(Game).where(Game.analysis_status == "analyzing")
+        .values(analysis_status="queued", lease_token=None, leased_at=None)
     ).rowcount
     session.commit()
     return n
