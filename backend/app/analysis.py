@@ -1,7 +1,8 @@
 """Stockfish analysis of a single game.
 
 Approach (same idea as Lichess):
-- Evaluate every position once at a fixed depth (reproducible).
+- Evaluate every position once at a fixed depth (reproducible). Evals are cached by
+  position, so opening positions repeated across games skip the engine.
 - Convert centipawns to win% for the side that just moved.
 - A move's "drop" = win% before the move - win% after it (both from the mover's side).
 - Classify by drop; per-move accuracy = Lichess accuracy formula.
@@ -10,6 +11,8 @@ Approach (same idea as Lichess):
 import io
 import math
 import os
+import threading
+from collections import OrderedDict
 from dataclasses import dataclass
 
 import chess
@@ -60,15 +63,33 @@ class PositionEval:
     best: chess.Move | None
 
 
+# Shared by all worker threads. Keyed by EPD (no move counters) so transpositions hit too.
+# Draw-by-repetition/50-move state isn't in the key; is_game_over() is checked before lookup.
+CACHE_SIZE = int(os.getenv("EVAL_CACHE_SIZE", "50000"))
+_cache: OrderedDict[str, PositionEval] = OrderedDict()
+_cache_lock = threading.Lock()
+
+
 def evaluate(engine: chess.engine.SimpleEngine, board: chess.Board) -> PositionEval:
     if board.is_checkmate():
         return PositionEval(-MATE_SCORE, None)  # side to move is mated
     if board.is_game_over():
         return PositionEval(0, None)  # stalemate / draw
+    key = board.epd()
+    with _cache_lock:
+        hit = _cache.get(key)
+        if hit is not None:
+            _cache.move_to_end(key)
+            return hit
     info = engine.analyse(board, chess.engine.Limit(depth=DEPTH))
     cp = info["score"].pov(board.turn).score(mate_score=MATE_SCORE)
     pv = info.get("pv") or [None]
-    return PositionEval(cp, pv[0])
+    result = PositionEval(cp, pv[0])
+    with _cache_lock:
+        _cache[key] = result
+        if len(_cache) > CACHE_SIZE:
+            _cache.popitem(last=False)
+    return result
 
 
 def analyze_pgn(pgn: str, engine: chess.engine.SimpleEngine) -> list[dict]:

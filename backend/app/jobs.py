@@ -1,7 +1,8 @@
 """Global analysis queue.
 
-ANALYSIS_WORKERS threads each own one single-threaded Stockfish process and analyze
-queued games oldest-first, across all users. A worker claims a game by flipping it from
+ANALYSIS_WORKERS threads each own one single-threaded Stockfish process. Users take turns:
+each claim goes to the queued user served least recently (a newcomer goes next), and within a
+user the newest game goes first, so a big sync never blocks a new visitor. A worker claims a game by flipping it from
 "queued" to "analyzing" in one conditional UPDATE, so two workers never take the same game.
 CPU use stays bounded no matter how many people use the site.
 """
@@ -9,6 +10,7 @@ CPU use stays bounded no matter how many people use the site.
 import logging
 import os
 import threading
+import time
 from datetime import datetime, timezone
 
 import chess.engine
@@ -23,6 +25,10 @@ log = logging.getLogger(__name__)
 _wake = threading.Event()
 _stop = threading.Event()
 _threads: list[threading.Thread] = []
+# Round-robin state: username -> monotonic time of that user's last claim. In-memory is fine:
+# after a restart everyone starts even again.
+_last_served: dict[str, float] = {}
+_served_lock = threading.Lock()
 
 # Parallel engines. Each uses Threads=1, so results stay reproducible. Default leaves a core free.
 WORKERS = max(1, int(os.getenv("ANALYSIS_WORKERS", str(min(4, max(1, (os.cpu_count() or 2) - 1))))))
@@ -50,26 +56,39 @@ def queue_status(session: Session, username: str) -> dict:
         .where(Game.username == username)
         .group_by(Game.analysis_status)
     ).all())
-    first = session.exec(
-        select(func.min(Game.queued_at)).where(Game.username == username, Game.analysis_status.in_(ACTIVE))
-    ).one()
     ahead = 0
-    if first is not None:  # games from other users queued before ours
+    if counts.get("queued") and not counts.get("analyzing"):
+        # turns are round-robin: every other user with queued work may get one game before ours
         ahead = session.exec(
-            select(func.count()).select_from(Game).where(
-                Game.analysis_status.in_(ACTIVE), Game.queued_at < first, Game.username != username
+            select(func.count(func.distinct(Game.username))).where(
+                Game.analysis_status.in_(ACTIVE), Game.username != username
             )
         ).one()
     running = any(counts.get(s, 0) for s in ACTIVE)
     return {"running": running, "counts": counts, "games_ahead": ahead}
 
 
+def _next_candidate(session: Session) -> int | None:
+    """The newest queued game of the user whose turn it is."""
+    users = session.exec(
+        select(Game.username, func.min(Game.queued_at))
+        .where(Game.analysis_status == "queued")
+        .group_by(Game.username)
+    ).all()
+    if not users:
+        return None
+    with _served_lock:
+        user = min(users, key=lambda u: (_last_served.get(u[0], 0.0), u[1] or datetime.min, u[0]))[0]
+    return session.exec(
+        select(Game.id).where(Game.username == user, Game.analysis_status == "queued")
+        .order_by(Game.end_time.desc(), Game.id.desc()).limit(1)
+    ).first()
+
+
 def _claim(session: Session) -> Game | None:
-    """Atomically take the oldest queued game, or None if the queue is empty."""
+    """Atomically take the next game in round-robin order, or None if the queue is empty."""
     while True:
-        gid = session.exec(
-            select(Game.id).where(Game.analysis_status == "queued").order_by(Game.queued_at, Game.id).limit(1)
-        ).first()
+        gid = _next_candidate(session)
         if gid is None:
             return None
         took = session.exec(
@@ -77,8 +96,11 @@ def _claim(session: Session) -> Game | None:
         ).rowcount
         session.commit()
         if took:
-            return session.get(Game, gid)
-        # another worker won the race; try the next one
+            game = session.get(Game, gid)
+            with _served_lock:
+                _last_served[game.username] = time.monotonic()
+            return game
+        # another worker won the race; try again
 
 
 def process_one(session: Session, sf: chess.engine.SimpleEngine) -> bool:

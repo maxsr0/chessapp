@@ -60,7 +60,7 @@ export function SyncBar({ username, autoStart }: { username: string; autoStart: 
   else if (running)
     message =
       ahead > 0
-        ? `Waiting in line: ${ahead} game${ahead === 1 ? "" : "s"} from other players ahead of yours`
+        ? `Taking turns with ${ahead} other player${ahead === 1 ? "" : "s"}: your first game starts shortly`
         : `Analyzing with Stockfish: ${done} of ${total} games done, ${remaining} to go`;
   else if (total) message = `${done} games analyzed${counts.error ? `, ${counts.error} failed` : ""}`;
   else message = "No games imported yet";

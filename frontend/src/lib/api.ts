@@ -120,7 +120,7 @@ export interface StudyPlan {
 export interface QueueStatus {
   running: boolean;
   counts: Partial<Record<Game["analysis_status"], number>>;
-  games_ahead: number;
+  games_ahead: number; // other players whose turn may come before ours (round-robin)
 }
 
 const u = (name: string) => encodeURIComponent(name.trim().toLowerCase());

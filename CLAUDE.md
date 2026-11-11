@@ -19,9 +19,11 @@ Deployment target: the backend runs as a Docker image on Render's free tier (`re
   - `chesscom.py`: API client and opening names.
   - `models.py`
   - `analysis.py`: Stockfish eval and move classification.
-  - `jobs.py`: a global queue served by `ANALYSIS_WORKERS` threads, each with its own single-threaded Stockfish process (default: min(4, cores−1); Docker sets 1 for Render's free tier). Workers claim the oldest `queued` game (by `queued_at`, across all users) with a conditional UPDATE to `analyzing`, so no two take the same game. Queued games survive restarts, and `analyzing` ones are re-queued at startup. SQLite runs in WAL mode with a 30 s busy timeout for the concurrent writers.
+  - `jobs.py`: a global queue served by `ANALYSIS_WORKERS` threads, each with its own single-threaded Stockfish process (default: min(4, cores−1); Docker sets 1 for Render's free tier). Workers claim round-robin across users (least recently served user first, newest game first within a user) with a conditional UPDATE to `analyzing`, so no two take the same game. Queued games survive restarts, and `analyzing` ones are re-queued at startup. SQLite runs in WAL mode with a 30 s busy timeout for the concurrent writers.
   - `patterns.py`: tactic tags, from the position plus the opponent's best reply.
   - `stats.py`: pandas aggregation and the study plan. The moves DataFrame is cached per user, keyed by analyzed-game count. Phase and tags are computed at query time, not stored.
+- `analysis.py` caches evals by position (EPD, LRU of `EVAL_CACHE_SIZE`, default 50000), so repeated opening positions skip the engine.
+- `.github/workflows/keepalive.yml` pings `/health` every 10 min so the free Render instance (and its worker) never sleeps.
 - `POST /players/{u}/sync` = import + enqueue. Import is capped by `MAX_IMPORT` (default 100). It's rate-limited per IP with `slowapi`, and CORS comes from `ALLOWED_ORIGINS`.
 - `backend/app/static/index.html`: the legacy vanilla-JS dashboard at `/`. It's superseded by `frontend/`.
 - `frontend/`: Next.js 16 (App Router) static export with `basePath: /chessapp`. **Read `frontend/AGENTS.md` and `node_modules/next/dist/docs/` before changing Next APIs.** `cacheComponents` and PPR are off because they break `output: "export"`.

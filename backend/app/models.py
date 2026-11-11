@@ -26,7 +26,7 @@ class Game(SQLModel, table=True):
     opening: str | None = None
     pgn: str
     analysis_status: str = Field(default="pending", index=True)  # pending | queued | analyzing | done | error
-    queued_at: datetime | None = None  # when it entered the analysis queue (FIFO order)
+    queued_at: datetime | None = None  # when it entered the analysis queue (round-robin tie-break)
     accuracy: float | None = None  # player's average move accuracy
 
 

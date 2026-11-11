@@ -49,8 +49,13 @@ def test_enqueue_and_queue_position(session):
         g.queued_at = datetime.now(timezone.utc) + timedelta(seconds=1)
     session.commit()
 
+    # round-robin: each other user with queued work may get a turn before ours
     assert jobs.queue_status(session, "bob")["games_ahead"] == 1
-    assert jobs.queue_status(session, "alice")["games_ahead"] == 0
+    assert jobs.queue_status(session, "alice")["games_ahead"] == 1
+    jobs._claim(session)  # once one of alice's games is in flight, she isn't waiting
+    session.expire_all()
+    owner = session.exec(select(Game).where(Game.analysis_status == "analyzing")).one().username
+    assert jobs.queue_status(session, owner)["games_ahead"] == 0
     assert jobs.queue_status(session, "alice")["running"] is True
 
 
@@ -81,3 +86,25 @@ def test_claim_is_exclusive_and_requeue(session):
     assert jobs.requeue_interrupted(session) == 2
     session.expire_all()
     assert {g.analysis_status for g in session.exec(select(Game))} == {"queued"}
+
+
+def test_round_robin_claim(session):
+    jobs._last_served.clear()
+    base = datetime.now(timezone.utc)
+    for i in range(6):
+        make_game(session, "alice", f"a{i}")
+    jobs.enqueue(session, "alice")
+    a_first = jobs._claim(session)
+    assert a_first.username == "alice"
+
+    # bob arrives later with two games; he must not wait behind alice's remaining five
+    for i in range(2):
+        g = make_game(session, "bob", f"b{i}")
+        g.end_time = base + timedelta(minutes=i)
+        session.commit()
+    jobs.enqueue(session, "bob")
+    order = []
+    while (g := jobs._claim(session)) is not None:
+        order.append((g.username, g.url))
+    assert [u for u, _ in order] == ["bob", "alice", "bob", "alice", "alice", "alice", "alice"][:len(order)]
+    assert order[0][1] == "b1"  # newest game first within a user
