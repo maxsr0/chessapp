@@ -19,7 +19,7 @@ export function Board({ id, fen, orientation = "white", arrows = [], highlights 
     Object.entries(highlights).map(([sq, c]) => [sq, { boxShadow: `inset 0 0 0 3px ${c}` }]),
   );
   return (
-    <div className="aspect-square w-full">
+    <div className="aspect-square w-full p-1.5 bg-hair rounded-[3px]">
     <Chessboard
       options={{
         id,

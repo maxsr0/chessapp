@@ -7,6 +7,7 @@ const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "/chessapp";
 const nextConfig: NextConfig = {
   output: "export",
   basePath,
+  env: { NEXT_PUBLIC_BASE_PATH: basePath }, // lets client code build URLs for files in public/
   trailingSlash: true, // emit player/index.html so GitHub Pages serves /chessapp/player/
   images: { unoptimized: true },
   // cacheComponents / partialPrefetching imply PPR, which output: "export" doesn't support.

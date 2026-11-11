@@ -6,3 +6,5 @@ __pycache__/
 node_modules/
 .next/
 *.pre-alembic.db
+*.db-shm
+*.db-wal

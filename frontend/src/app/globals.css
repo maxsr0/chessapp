@@ -1,73 +1,65 @@
 @import "tailwindcss";
 
-/* Tokens mirror maxwellrobbins.com so /chessapp feels like part of the site.
-   Chart series colors were run through the dataviz palette validator against both surfaces. */
+/* ChessIQ shares the portfolio's type and layout grammar but has its own palette:
+   dark-first green felt with a brass accent; cream "light" is opt-in via data-theme.
+   Series colors were contrast-checked (>= 3:1) against both surfaces. */
 :root {
-  color-scheme: light;
-  --paper: #f7f6f2;
-  --ink: #101014;
-  --muted: #63636b;
-  --hair: #dddad2;
-  --accent: #2b44e7;
-  --body: #2a2a30;
-  --hovermuted: #b9b9c2;
-  --panel: #efede7;
+  color-scheme: dark;
+  --paper: #0f1a15;
+  --ink: #efe9dc;
+  --muted: #8e9a92;
+  --hair: #24362d;
+  --accent: #d4a64a;
+  --on-accent: #0f1a15;
+  --body: #c9c4b6;
+  --hovermuted: #56645b;
+  --panel: #15241d;
 
-  --series-1: #2b44e7;
-  --series-2: #eb6834;
-  --series-3: #1baf7a;
-  --series-4: #eda100;
+  --series-1: #d4a64a;
+  --series-2: #e0704a;
+  --series-3: #5ab4d6;
+  --series-4: #a99bf0;
 
   /* move-quality status colors: always shown with a symbol + label */
-  --q-best: #0ca30c;
-  --q-good: #63636b;
-  --q-inaccuracy: #c98a00;
+  --q-best: #3ec46d;
+  --q-good: #8e9a92;
+  --q-inaccuracy: #f0b429;
   --q-mistake: #ec835a;
-  --q-blunder: #d03b3b;
+  --q-blunder: #e05252;
 
-  --sq-light: #e8e5dc;
-  --sq-dark: #9aa3c9;
+  --sq-light: #e6dcc3;
+  --sq-dark: #3f6b55;
+  --felt-glow: rgba(212, 166, 74, 0.08);
+  --spot-warm: rgba(212, 166, 74, 0.16);
+  --spot-sheen: rgba(239, 233, 220, 0.07);
+  --shimmer-mid: #1c2c24;
 }
-
-@media (prefers-color-scheme: dark) {
-  :root:where(:not([data-theme="light"])) {
-    color-scheme: dark;
-    --paper: #121216;
-    --ink: #f2f1ec;
-    --muted: #9b9ba4;
-    --hair: #2d2d34;
-    --accent: #8296ff;
-    --body: #c8c8cf;
-    --hovermuted: #585860;
-    --panel: #1a1a20;
-    --series-1: #7086f5;
-    --series-2: #d95926;
-    --series-3: #199e70;
-    --series-4: #c98500;
-    --q-good: #9b9ba4;
-    --q-inaccuracy: #fab219;
-    --sq-light: #d9d7e3;
-    --sq-dark: #7d87b8;
-  }
-}
-:root[data-theme="dark"] {
-  color-scheme: dark;
-  --paper: #121216;
-  --ink: #f2f1ec;
-  --muted: #9b9ba4;
-  --hair: #2d2d34;
-  --accent: #8296ff;
-  --body: #c8c8cf;
-  --hovermuted: #585860;
-  --panel: #1a1a20;
-  --series-1: #7086f5;
-  --series-2: #d95926;
-  --series-3: #199e70;
-  --series-4: #c98500;
-  --q-good: #9b9ba4;
-  --q-inaccuracy: #fab219;
-  --sq-light: #d9d7e3;
-  --sq-dark: #7d87b8;
+:root[data-theme="light"] {
+  color-scheme: light;
+  --paper: #f3efe4;
+  --ink: #13201a;
+  --muted: #646d66;
+  --hair: #dcd5c3;
+  --accent: #9a6b12;
+  --on-accent: #fff;
+  --body: #2b332e;
+  --hovermuted: #b6b9ad;
+  --panel: #e9e3d3;
+  --series-1: #9a6b12;
+  --series-2: #c4532b;
+  --series-3: #1f7a9e;
+  --series-4: #6a55d0;
+  --q-best: #178a3c;
+  --q-good: #646d66;
+  --q-inaccuracy: #a87500;
+  --q-mistake: #c4532b;
+  --q-blunder: #c03636;
+  --sq-light: #ece3cc;
+  --sq-dark: #4f7d66;
+  --felt-glow: rgba(154, 107, 18, 0.06);
+  --spot-warm: rgba(154, 107, 18, 0.12);
+  --spot-sheen: rgba(255, 255, 255, 0.5);
+  --shimmer-mid: #e3dccb;
 }
 
 @theme inline {
@@ -76,6 +68,7 @@
   --color-muted: var(--muted);
   --color-hair: var(--hair);
   --color-accent: var(--accent);
+  --color-on-accent: var(--on-accent);
   --color-body: var(--body);
   --color-panel: var(--panel);
   --color-hovermuted: var(--hovermuted);
@@ -85,7 +78,7 @@
 }
 
 body {
-  background: var(--paper);
+  background: radial-gradient(1200px 600px at 75% -10%, var(--felt-glow), transparent 70%), var(--paper);
   color: var(--ink);
   font-size: 16px;
   line-height: 1.6;
@@ -93,7 +86,7 @@ body {
 }
 ::selection {
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 @layer components {
@@ -110,10 +103,6 @@ body {
     font-weight: 900;
     text-transform: uppercase;
     letter-spacing: -0.015em;
-  }
-  .outline-text {
-    color: transparent;
-    -webkit-text-stroke: 2.5px var(--ink);
   }
   .wrap {
     max-width: 1180px;
@@ -144,7 +133,7 @@ body {
   .btn-primary {
     background: var(--accent);
     border-color: var(--accent);
-    color: #fff;
+    color: var(--on-accent);
   }
   .btn-primary:hover {
     background: var(--ink);
@@ -167,12 +156,121 @@ body {
   }
 }
 
-/* theme toggle icon: sun in light, moon in dark (CSS-only, so SSR markup is stable) */
-.theme-moon { display: none; }
-:root[data-theme="dark"] .theme-sun { display: none; }
-:root[data-theme="dark"] .theme-moon { display: block; }
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .theme-sun { display: none; }
-  :root:not([data-theme="light"]) .theme-moon { display: block; }
+/* theme toggle icon: moon in dark (the default), sun in light (CSS-only, so SSR markup is stable) */
+.theme-sun { display: none; }
+:root[data-theme="light"] .theme-sun { display: block; }
+:root[data-theme="light"] .theme-moon { display: none; }
+
+/* ---------- motion ---------- */
+/* Hero copy rises in with CSS, not JS, so it shows before hydration and never waits on WebGL. */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+    filter: blur(6px);
+  }
+}
+.rise {
+  animation: rise 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: var(--d, 0s);
+}
+/* skeleton shimmer, a softer cue than a blinking pulse */
+@keyframes shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+.shimmer {
+  background: linear-gradient(90deg, var(--hair) 0%, var(--shimmer-mid) 50%, var(--hair) 100%) 0 0 / 200% 100%;
+  animation: shimmer 1.6s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .rise,
+  .shimmer {
+    animation: none;
+  }
+}
+@keyframes grow-x {
+  from {
+    transform: scaleX(0);
+  }
+}
+.grow-x {
+  transform-origin: left;
+  animation: grow-x 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: var(--d, 0s);
+}
+@media (prefers-reduced-motion: reduce) {
+  .grow-x {
+    animation: none;
+  }
 }
 
+/* ---------- interaction details ---------- */
+html {
+  scroll-behavior: smooth;
+}
+body {
+  transition: background-color 0.3s, color 0.3s;
+}
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+/* text fields show focus with their own accent underline */
+input:focus-visible {
+  outline: none;
+}
+/* underline that draws in from the left */
+.link-underline {
+  background: linear-gradient(currentColor, currentColor) 0 100% / 0 1.5px no-repeat;
+  transition: background-size 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.link-underline:hover {
+  background-size: 100% 1.5px;
+}
+/* theme icon swaps with a quarter turn */
+@keyframes spin-in {
+  from {
+    transform: rotate(-90deg) scale(0.6);
+    opacity: 0;
+  }
+}
+.theme-sun,
+.theme-moon {
+  animation: spin-in 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+}
+/* list rows: a brass arrow slides in on hover */
+.row-arrow {
+  opacity: 0;
+  transform: translateX(-6px);
+  transition: opacity 0.2s, transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.row-hover:hover .row-arrow,
+.row-hover:focus-visible .row-arrow {
+  opacity: 1;
+  transform: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .theme-sun,
+  .theme-moon {
+    animation: none;
+  }
+}
+/* soft overhead light pooling behind the hero king (it sits right of the copy on wide screens) */
+.hero-spot {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(28% 46% at var(--spot-x, 50%) 30%, var(--spot-warm), transparent 72%),
+    radial-gradient(60% 50% at var(--spot-x, 50%) 0%, var(--spot-sheen), transparent 70%);
+}
+@media (min-width: 1024px) {
+  .hero-spot {
+    --spot-x: 70%;
+  }
+}

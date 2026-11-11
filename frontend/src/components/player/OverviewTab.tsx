@@ -5,6 +5,11 @@ import { api, type Classification } from "@/lib/api";
 import { QUALITY } from "@/lib/chess";
 import { MonthLine, RatingChart, WinRateBars } from "@/components/charts";
 import { Empty, QualityBadge, SectionHead, Skeleton, StatTile, num, pct } from "@/components/ui";
+import { NumberTicker } from "@/components/motion";
+
+/** Count up to a value; a missing value shows a dash, like pct() and num(). */
+const tick = (v: number | null | undefined, f: (n: number) => string) =>
+  v == null || Number.isNaN(v) ? "–" : <NumberTicker value={v} format={f} />;
 
 const ORDER: Classification[] = ["best", "good", "inaccuracy", "mistake", "blunder"];
 
@@ -30,10 +35,10 @@ export function OverviewTab({ username }: { username: string }) {
   return (
     <div className="space-y-14">
       <div className="grid grid-cols-2 sm:grid-cols-4 border-y border-ink">
-        <StatTile label="Games" value={o.games} sub={`${r.win ?? 0}W · ${r.draw ?? 0}D · ${r.loss ?? 0}L`} />
-        <StatTile label="Win rate" value={pct(o.win_rate)} />
-        <StatTile label="Accuracy" value={num(o.avg_accuracy)} sub="Average per game" />
-        <StatTile label="Blunders / game" value={num(blunders / Math.max(analyzedGames, 1))} sub={`${blunders} total`} />
+        <StatTile label="Games" value={tick(o.games, (n) => Math.round(n).toLocaleString())} sub={`${r.win ?? 0}W · ${r.draw ?? 0}D · ${r.loss ?? 0}L`} />
+        <StatTile label="Win rate" value={tick(o.win_rate, (n) => pct(n))} />
+        <StatTile label="Accuracy" value={tick(o.avg_accuracy, (n) => num(n))} sub="Average per game" />
+        <StatTile label="Blunders / game" value={tick(blunders / Math.max(analyzedGames, 1), (n) => num(n))} sub={`${blunders} total`} />
       </div>
 
       {totalMoves > 0 && (
@@ -41,12 +46,16 @@ export function OverviewTab({ username }: { username: string }) {
           <SectionHead title="Move quality" caption={`${totalMoves.toLocaleString()} of your moves`} />
           {/* One stacked bar: segments separated by a 2px gap, each labeled below */}
           <div className="flex h-4 gap-[2px] mt-5" role="img" aria-label="Share of moves by quality">
-            {ORDER.map((k) =>
+            {ORDER.map((k, i) =>
               cc[k] ? (
                 <div
                   key={k}
-                  className="first:rounded-l last:rounded-r"
-                  style={{ width: `${(100 * (cc[k] ?? 0)) / totalMoves}%`, background: QUALITY[k].color }}
+                  className="grow-x first:rounded-l last:rounded-r"
+                  style={{
+                    width: `${(100 * (cc[k] ?? 0)) / totalMoves}%`,
+                    background: QUALITY[k].color,
+                    ["--d" as string]: `${i * 0.09}s`,
+                  }}
                   title={`${QUALITY[k].label}: ${cc[k]}`}
                 />
               ) : null,

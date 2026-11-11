@@ -5,7 +5,7 @@ import { Moon, Sun } from "lucide-react";
 function isDark() {
   const t = document.documentElement.getAttribute("data-theme");
   if (t) return t === "dark";
-  return window.matchMedia("(prefers-color-scheme: dark)").matches;
+  return true; // dark is the default
 }
 
 export function ThemeToggle() {

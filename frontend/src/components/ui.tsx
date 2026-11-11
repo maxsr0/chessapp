@@ -34,7 +34,7 @@ export function QualityBadge({ c, withLabel = true }: { c: Classification; withL
 }
 
 export function Panel({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <div className={clsx("border border-hair bg-panel/40 p-4 sm:p-5", className)}>{children}</div>;
+  return <div className={clsx("border border-hair bg-panel/60 shadow-[inset_0_1px_0_var(--felt-glow)] p-4 sm:p-5", className)}>{children}</div>;
 }
 
 export function Empty({ children }: { children: React.ReactNode }) {
@@ -42,7 +42,7 @@ export function Empty({ children }: { children: React.ReactNode }) {
 }
 
 export function Skeleton({ className }: { className?: string }) {
-  return <div className={clsx("animate-pulse bg-hair/60", className)} />;
+  return <div className={clsx("shimmer", className)} />;
 }
 
 export const pct = (v: number | null | undefined, digits = 0) => (v == null ? "–" : `${v.toFixed(digits)}%`);

@@ -45,7 +45,7 @@ export interface Game {
   rated: boolean;
   end_time: string;
   opening: string | null;
-  analysis_status: "pending" | "queued" | "done" | "error";
+  analysis_status: "pending" | "queued" | "analyzing" | "done" | "error";
   accuracy: number | null;
 }
 
@@ -139,3 +139,6 @@ export const api = {
   weaknesses: (name: string) => request<Weaknesses>(`/players/${u(name)}/stats/weaknesses`),
   studyPlan: (name: string) => request<StudyPlan>(`/players/${u(name)}/study-plan`),
 };
+
+/** Featured account for the "Demo" links; its games are pre-analyzed in the database. */
+export const DEMO_PLAYER = "gothamchess";

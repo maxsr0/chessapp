@@ -19,7 +19,7 @@ Deployment target: the backend runs as a Docker image on Render's free tier (`re
   - `chesscom.py`: API client and opening names.
   - `models.py`
   - `analysis.py`: Stockfish eval and move classification.
-  - `jobs.py`: **one global worker thread** with one Stockfish process. It works through `Game.analysis_status == "queued"` oldest-first (by `queued_at`), across all users. Queued games survive restarts.
+  - `jobs.py`: a global queue served by `ANALYSIS_WORKERS` threads, each with its own single-threaded Stockfish process (default: min(4, cores−1); Docker sets 1 for Render's free tier). Workers claim the oldest `queued` game (by `queued_at`, across all users) with a conditional UPDATE to `analyzing`, so no two take the same game. Queued games survive restarts, and `analyzing` ones are re-queued at startup. SQLite runs in WAL mode with a 30 s busy timeout for the concurrent writers.
   - `patterns.py`: tactic tags, from the position plus the opponent's best reply.
   - `stats.py`: pandas aggregation and the study plan. The moves DataFrame is cached per user, keyed by analyzed-game count. Phase and tags are computed at query time, not stored.
 - `POST /players/{u}/sync` = import + enqueue. Import is capped by `MAX_IMPORT` (default 100). It's rate-limited per IP with `slowapi`, and CORS comes from `ALLOWED_ORIGINS`.
@@ -27,12 +27,12 @@ Deployment target: the backend runs as a Docker image on Render's free tier (`re
 - `frontend/`: Next.js 16 (App Router) static export with `basePath: /chessapp`. **Read `frontend/AGENTS.md` and `node_modules/next/dist/docs/` before changing Next APIs.** `cacheComponents` and PPR are off because they break `output: "export"`.
   - Pages: `/` (search), `/player?u=&tab=`, `/game?id=&ply=&u=`. Query-param routes read `useSearchParams` inside a `<Suspense>` boundary. localStorage readers use `use(browser())`.
   - Data: `src/lib/api.ts` (typed client, TanStack Query; `NEXT_PUBLIC_API_URL`). `SyncBar` polls the queue status and refreshes stats as games finish.
-  - Design: tokens in `src/app/globals.css` mirror maxwellrobbins.com (Archivo, Inter, JetBrains Mono, paper/ink/accent; light and dark via `data-theme` + the media query). Chart series colors were validated with the dataviz palette script. Keep one y-axis per chart, and keep text in ink colors (color dots carry the meaning).
+  - Design: shares maxwellrobbins.com's type (Archivo, Inter, JetBrains Mono) and layout grammar, but has its own palette in `src/app/globals.css`: dark-first green felt with a brass accent, and cream light mode opt-in via `data-theme="light"`. The home hero is a three.js king (`HeroKingScene.tsx`, loaded client-only via `HeroPiece.tsx` with an SVG fallback) from `public/models/kings.glb`, the Poly Haven CC0 chess set trimmed by `scripts/prepare-king.mjs`. The piece only spins on Y and is grounded by measuring its bounding box; intro, parallax and scroll move the camera, never the piece. Build public-file URLs with `asset()` from `src/lib/paths.ts` (basePath). Chart series colors were validated with the dataviz palette script. Keep one y-axis per chart, and keep text in ink colors (color dots carry the meaning).
   - Commands (in `frontend/`): `NEXT_PUBLIC_API_URL=http://127.0.0.1:8000 npm run dev` → http://localhost:3000/chessapp. Also `npm run build` (writes `out/`), `npx tsc --noEmit`, and `npx eslint src`.
   - Deploy: `.github/workflows/pages.yml` publishes `frontend/out` to GitHub Pages.
 
 ## Conventions and gotchas
-- Config comes from env vars, which `.env` loads locally: `DATABASE_URL` (SQLite by default; `postgres://` URLs are rewritten to `postgresql+psycopg://`), `STOCKFISH_PATH`, `ANALYSIS_DEPTH` (12 locally, 10 in Docker), `MAX_IMPORT`, `ALLOWED_ORIGINS`, and `RUN_WORKER` (set to `0` to skip the worker; the tests do this).
+- Config comes from env vars, which `.env` loads locally: `DATABASE_URL` (SQLite by default; `postgres://` URLs are rewritten to `postgresql+psycopg://`), `STOCKFISH_PATH`, `ANALYSIS_DEPTH` (12 locally, 10 in Docker), `ANALYSIS_WORKERS`, `MAX_IMPORT`, `ALLOWED_ORIGINS`, and `RUN_WORKER` (set to `0` to skip the worker; the tests do this).
 - Tests use a temp SQLite DB set up in `tests/conftest.py`. Env vars must be set before `app` is imported.
 - Chess.com API: send a descriptive `User-Agent` and make requests one at a time (parallel calls get rate-limited).
 - `MoveAnalysis.eval_before/eval_after` are from the *mover's* point of view (`score.pov(board.turn).score(mate_score=10000)`; mate in N = ±(10000−N)). Use `is_player` to select the analyzed player's moves; for a White-POV graph, negate Black's moves.
