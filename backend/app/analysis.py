@@ -1,7 +1,8 @@
 """Stockfish analysis of a single game.
 
 Approach (same idea as Lichess):
-- Evaluate every position once at a fixed depth (reproducible).
+- Evaluate every position once at a fixed depth, with the hash cleared per game
+  (reproducible: a game's evals depend only on that game).
 - Convert centipawns to win% for the side that just moved.
 - A move's "drop" = win% before the move - win% after it (both from the mover's side).
 - Classify by drop; per-move accuracy = Lichess accuracy formula.
@@ -60,32 +61,59 @@ class PositionEval:
     best: chess.Move | None
 
 
-def evaluate(engine: chess.engine.SimpleEngine, board: chess.Board) -> PositionEval:
-    if board.is_checkmate():
-        return PositionEval(-MATE_SCORE, None)  # side to move is mated
-    if board.is_game_over():
-        return PositionEval(0, None)  # stalemate / draw
-    info = engine.analyse(board, chess.engine.Limit(depth=DEPTH))
+def evaluate(engine: chess.engine.SimpleEngine, board: chess.Board, game: object = None) -> PositionEval:
+    if (done := terminal_eval(board)) is not None:
+        return done
+    # A new `game` object makes python-chess send "ucinewgame" (clears the hash), so each game's
+    # evals depend only on that game. The browser engine does the same, so results match exactly.
+    info = engine.analyse(board, chess.engine.Limit(depth=DEPTH), game=game)
     cp = info["score"].pov(board.turn).score(mate_score=MATE_SCORE)
     pv = info.get("pv") or [None]
     return PositionEval(cp, pv[0])
 
 
-def analyze_pgn(pgn: str, engine: chess.engine.SimpleEngine) -> list[dict]:
-    """Return one dict per ply with evals from the mover's perspective."""
+def terminal_eval(board: chess.Board) -> PositionEval | None:
+    """Positions that need no engine: checkmate and other game-over states."""
+    if board.is_checkmate():
+        return PositionEval(-MATE_SCORE, None)  # side to move is mated
+    if board.is_game_over():
+        return PositionEval(0, None)  # stalemate / draw
+    return None
+
+
+def game_boards(pgn: str) -> tuple[chess.pgn.Game, list[chess.Board]]:
+    """The parsed game plus the board before every ply and after the last one."""
     game = chess.pgn.read_game(io.StringIO(pgn))
     if game is None:
         raise ValueError("Could not parse PGN")
-
     board = game.board()
-    before = evaluate(engine, board)
+    boards = [board.copy()]
+    for node in game.mainline():
+        board.push(node.move)
+        boards.append(board.copy())
+    return game, boards
+
+
+def analyze_pgn(pgn: str, engine: chess.engine.SimpleEngine) -> list[dict]:
+    """Return one dict per ply with evals from the mover's perspective."""
+    game, boards = game_boards(pgn)
+    key = object()
+    return build_rows(game, [evaluate(engine, b, key) for b in boards])
+
+
+def build_rows(game: chess.pgn.Game, evals: list[PositionEval]) -> list[dict]:
+    """Turn one eval per position (from the side to move) into per-ply rows.
+
+    Shared by the server engine and browser-submitted evals, so both are graded identically.
+    """
+    board = game.board()
     rows = []
     for ply, node in enumerate(game.mainline(), start=1):
+        before, after = evals[ply - 1], evals[ply]
         mover = board.turn
         fen_before = board.fen()
         san = board.san(node.move)
         board.push(node.move)
-        after = evaluate(engine, board)
 
         cp_before = before.cp
         cp_after = -after.cp  # flip: after.cp is from the opponent's view
@@ -105,7 +133,6 @@ def analyze_pgn(pgn: str, engine: chess.engine.SimpleEngine) -> list[dict]:
             "best_move": board_san_safe(fen_before, before.best),
             "clock": node.clock(),  # seconds left after the move, from %clk
         })
-        before = after
     return rows
 
 

@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { Segmented } from "@/components/motion";
+import { useBrowserAnalysis } from "@/lib/useBrowserAnalysis";
 
 const LIMITS = [25, 50, 100] as const;
 const STAT_KEYS = ["overview", "openings", "weaknesses", "study", "games"];
@@ -20,6 +21,7 @@ export function SyncBar({ username, autoStart }: { username: string; autoStart: 
     queryFn: () => api.status(username),
     refetchInterval: (q) => (q.state.data?.running ? 3000 : false),
   });
+  const browser = useBrowserAnalysis(username, (status.data?.counts.queued ?? 0) > 0);
 
   const sync = useMutation({
     mutationFn: () => api.sync(username, limit),
@@ -57,10 +59,14 @@ export function SyncBar({ username, autoStart }: { username: string; autoStart: 
   let message: string;
   if (sync.isPending) message = "Fetching games from Chess.com…";
   else if (sync.isError) message = (sync.error as Error).message;
+  else if (running && browser === "loading")
+    message = "Loading Stockfish in your browser (one-time download, then it's cached)…";
+  else if (running && browser === "analyzing")
+    message = `Analyzing with Stockfish on this device: ${done} of ${total} games done, ${remaining} to go`;
   else if (running)
     message =
       ahead > 0
-        ? `Waiting in line: ${ahead} game${ahead === 1 ? "" : "s"} from other players ahead of yours`
+        ? `Taking turns with ${ahead} other player${ahead === 1 ? "" : "s"}: your first game starts shortly`
         : `Analyzing with Stockfish: ${done} of ${total} games done, ${remaining} to go`;
   else if (total) message = `${done} games analyzed${counts.error ? `, ${counts.error} failed` : ""}`;
   else message = "No games imported yet";

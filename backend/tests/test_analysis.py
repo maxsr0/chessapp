@@ -51,3 +51,4 @@ def test_black_blunder_and_mate():
     assert mate["classification"] in {"best", "good"}
 
     assert by_san["e4"]["classification"] in {"best", "good"}
+

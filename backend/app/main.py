@@ -1,3 +1,4 @@
+import json
 import os
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -5,7 +6,7 @@ from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, RedirectResponse, Response
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
@@ -103,6 +104,56 @@ def sync(
 @app.get("/players/{username}/analysis-status")
 def analysis_status(username: str, session: Session = Depends(get_session)) -> dict:
     return jobs.queue_status(session, username.lower())
+
+
+# ---- Browser analysis (see jobs.py) ----
+# Bodies are read as raw JSON, so the browser can send them as text/plain: a CORS "simple
+# request" with no preflight, which also works from fetch(keepalive) while a tab closes.
+
+
+async def _json_body(request: Request) -> dict:
+    try:
+        body = json.loads(await request.body())
+    except ValueError:
+        raise HTTPException(400, "Body must be JSON")
+    if not isinstance(body, dict) or not isinstance(body.get("token"), str):
+        raise HTTPException(400, "Missing lease token")
+    return body
+
+
+@app.post("/players/{username}/client-claim")
+@limiter.limit("60/minute")
+def client_claim(request: Request, username: str, session: Session = Depends(get_session)):
+    work = jobs.client_claim(session, username.lower())
+    return work if work is not None else Response(status_code=204)
+
+
+@app.post("/games/{game_id}/client-result")
+@limiter.limit("60/minute")
+async def client_result(request: Request, game_id: int, session: Session = Depends(get_session)) -> dict:
+    body = await _json_body(request)
+    evals = body.get("evals")
+    if not isinstance(evals, list) or len(evals) > 2000:
+        raise HTTPException(400, "evals must be a list")
+    try:
+        game = jobs.client_submit(session, game_id, body["token"], evals)
+    except LookupError:
+        raise HTTPException(409, "Lease expired; the game went back to the queue")
+    except jobs.InvalidResult as e:
+        jobs.client_release(session, game_id, body["token"])
+        raise HTTPException(422, f"Rejected analysis: {e}")
+    return {"game_id": game.id, "accuracy": game.accuracy}
+
+
+@app.post("/games/{game_id}/client-release")
+@limiter.limit("60/minute")
+async def client_release(request: Request, game_id: int, session: Session = Depends(get_session)) -> dict:
+    body = await _json_body(request)
+    try:
+        jobs.client_release(session, game_id, body["token"])
+    except LookupError:
+        pass  # already expired or finished
+    return {"released": True}
 
 
 @app.get("/players/{username}/games")
